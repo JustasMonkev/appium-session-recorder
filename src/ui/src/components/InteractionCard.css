@@ -1,0 +1,147 @@
+.interaction-card {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+    border-left: 4px solid var(--color-accent-primary);
+    transition: all var(--transition-base);
+    box-shadow: var(--shadow-sm);
+}
+
+.interaction-card.action {
+    border-left-color: var(--color-accent-warning);
+}
+
+.interaction-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.interaction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-3);
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.interaction-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    flex-wrap: wrap;
+}
+
+.interaction-id {
+    background: var(--color-accent-primary);
+    color: var(--color-bg-primary);
+    padding: var(--spacing-1) var(--spacing-3);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+}
+
+.interaction-card.action .interaction-id {
+    background: var(--color-accent-warning);
+}
+
+.interaction-method {
+    font-weight: var(--font-weight-bold);
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+}
+
+.interaction-method.POST {
+    background: var(--color-accent-success);
+    color: var(--color-bg-primary);
+}
+
+.interaction-method.GET {
+    background: hsl(210, 100%, 60%);
+    color: white;
+}
+
+.interaction-method.DELETE {
+    background: var(--color-accent-error);
+    color: white;
+}
+
+.interaction-path {
+    font-family: 'Courier New', monospace;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    word-break: break-all;
+}
+
+.interaction-time {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+}
+
+.element-info {
+    background: var(--color-bg-tertiary);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    margin-top: var(--spacing-3);
+    font-size: var(--font-size-sm);
+}
+
+.element-info-using {
+    color: var(--color-accent-primary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.element-info-value {
+    color: var(--color-text-primary);
+}
+
+.interaction-body {
+    background: var(--color-bg-elevated);
+    padding: var(--spacing-4);
+    border-radius: var(--radius-md);
+    margin-top: var(--spacing-3);
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-size-xs);
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+}
+
+.screenshot-container {
+    margin-top: var(--spacing-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    align-items: flex-start;
+}
+
+.screenshot {
+    max-width: 300px;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    border: 2px solid var(--color-border);
+    transition: all var(--transition-base);
+}
+
+.screenshot:hover {
+    border-color: var(--color-border-hover);
+    box-shadow: var(--shadow-glow);
+}
+
+.inspect-btn {
+    background: var(--color-accent-secondary);
+    color: white;
+    border: none;
+    padding: var(--spacing-3) var(--spacing-5);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+}
+
+.inspect-btn:hover {
+    background: hsl(271, 76%, 60%);
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+}

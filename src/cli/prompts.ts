@@ -1,0 +1,50 @@
+import * as p from '@clack/prompts';
+import type { RecorderOptions } from '../server/types.js';
+
+export async function runPrompts(): Promise<Partial<RecorderOptions> & { saveConfig: boolean }> {
+    console.clear();
+
+    p.intro('🎬 Appium Session Recorder');
+
+    const answers = await p.group(
+        {
+            port: () => p.text({
+                message: 'Proxy port:',
+                initialValue: '4724',
+                validate: (value) => {
+                    const num = Number(value);
+                    if (isNaN(num) || num < 1 || num > 65535) {
+                        return 'Please enter a valid port number (1-65535)';
+                    }
+                },
+            }),
+            appiumUrl: () => p.text({
+                message: 'Appium server URL:',
+                initialValue: 'http://127.0.0.1:4723',
+                validate: (value) => {
+                    try {
+                        new URL(value);
+                    } catch {
+                        return 'Please enter a valid URL';
+                    }
+                },
+            }),
+            saveConfig: () => p.confirm({
+                message: 'Save configuration to .appiumrc.json?',
+                initialValue: true,
+            }),
+        },
+        {
+            onCancel: () => {
+                p.cancel('Operation cancelled.');
+                process.exit(0);
+            },
+        }
+    );
+
+    return {
+        port: Number(answers.port),
+        appiumUrl: answers.appiumUrl as string,
+        saveConfig: answers.saveConfig as boolean,
+    };
+}

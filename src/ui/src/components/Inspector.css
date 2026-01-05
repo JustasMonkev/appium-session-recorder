@@ -1,0 +1,307 @@
+.inspector-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: var(--z-modal);
+    animation: fadeIn var(--transition-base);
+}
+
+.inspector-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--color-bg-primary);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-6);
+    width: 90vw;
+    max-width: 1400px;
+    max-height: 90vh;
+    overflow: hidden;
+    z-index: var(--z-modal);
+    box-shadow: var(--shadow-lg);
+    animation: slideIn var(--transition-base);
+}
+
+.inspector-close {
+    position: absolute;
+    top: var(--spacing-4);
+    right: var(--spacing-4);
+    background: var(--color-bg-tertiary);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xl);
+    cursor: pointer;
+    color: var(--color-text-primary);
+    transition: all var(--transition-fast);
+    z-index: 1;
+}
+
+.inspector-close:hover {
+    background: var(--color-accent-error);
+    color: white;
+}
+
+.inspector-panel {
+    display: flex;
+    gap: var(--spacing-6);
+    height: 100%;
+}
+
+.inspector-left {
+    flex-shrink: 0;
+}
+
+.inspector-screenshot {
+    max-height: 80vh;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
+
+.inspector-right {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: var(--spacing-2);
+}
+
+.inspector-section {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+    margin-bottom: var(--spacing-4);
+}
+
+.inspector-section h3 {
+    color: var(--color-accent-primary);
+    font-size: var(--font-size-base);
+    margin-bottom: var(--spacing-4);
+    font-weight: var(--font-weight-semibold);
+}
+
+.query-tester {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+.query-row {
+    display: flex;
+    gap: var(--spacing-3);
+}
+
+.query-select,
+.query-input {
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+}
+
+.query-select {
+    min-width: 150px;
+}
+
+.query-input {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+}
+
+.query-btn {
+    background: var(--color-accent-secondary);
+    color: white;
+    border: none;
+    padding: var(--spacing-3) var(--spacing-5);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: var(--font-weight-semibold);
+    transition: all var(--transition-fast);
+}
+
+.query-btn:hover {
+    background: hsl(271, 76%, 60%);
+}
+
+.query-result {
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+}
+
+.query-result.success {
+    background: rgba(46, 213, 115, 0.2);
+    color: var(--color-accent-success);
+}
+
+.element-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+.element-attr {
+    display: flex;
+    gap: var(--spacing-4);
+    font-size: var(--font-size-sm);
+}
+
+.attr-name {
+    color: var(--color-text-tertiary);
+    min-width: 100px;
+}
+
+.attr-value {
+    color: var(--color-text-primary);
+    font-family: 'Courier New', monospace;
+}
+
+.locators-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.locator-row {
+    display: flex;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3);
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.locator-row:hover {
+    background: var(--color-bg-tertiary);
+}
+
+.locator-strategy {
+    color: var(--color-accent-warning);
+    font-size: var(--font-size-xs);
+    min-width: 150px;
+    font-weight: var(--font-weight-medium);
+}
+
+.locator-value {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-primary);
+    word-break: break-all;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* Element Browser */
+.elements-browser {
+    max-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+    -webkit-overflow-scrolling: touch;
+}
+
+.element-item {
+    display: flex;
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-size: var(--font-size-xs);
+}
+
+.element-item:hover {
+    background: var(--color-bg-tertiary);
+}
+
+.element-item.selected {
+    background: var(--color-accent-primary);
+    color: var(--color-bg-primary);
+}
+
+.element-item.selected .element-type {
+    color: var(--color-bg-primary);
+}
+
+.element-type {
+    color: var(--color-accent-secondary);
+    font-weight: var(--font-weight-medium);
+    min-width: 100px;
+}
+
+.element-name {
+    color: var(--color-text-secondary);
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.element-item.selected .element-name {
+    color: var(--color-bg-secondary);
+}
+
+.elements-more {
+    padding: var(--spacing-2);
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+    text-align: center;
+}
+
+/* XML Source */
+.source-toggle-btn {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border: none;
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+    margin-bottom: var(--spacing-3);
+}
+
+.source-toggle-btn:hover {
+    background: var(--color-border);
+}
+
+.xml-source {
+    background: var(--color-bg-elevated);
+    padding: var(--spacing-4);
+    border-radius: var(--radius-md);
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-size-xs);
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+}
