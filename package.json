@@ -1,0 +1,21 @@
+{
+  "name": "appium-websocket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "bun src/recorder.ts"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
+    "fast-diff": "^1.3.0",
+    "fast-xml-parser": "^5.3.3",
+    "http-proxy-middleware": "^3.0.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "typescript": "^5.5.3"
+  },
+  "private": true
+}
