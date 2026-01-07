@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { InteractionRecorder } from './interaction-recorder.js';
@@ -15,11 +15,8 @@ export function createRoutes(recorder: InteractionRecorder) {
         res.sendFile(uiPath);
     });
 
-    // Serve static assets
-    router.use('/_recorder/assets', (req, res, next) => {
-        const assetsPath = path.join(__dirname, '../../dist/ui/assets');
-        return res.sendFile(path.join(assetsPath, req.path));
-    });
+    // Serve static assets using express.static for better performance and caching
+    router.use('/_recorder/assets', express.static(path.join(__dirname, '../../dist/ui/assets')));
 
     // API: Get history
     router.get('/_recorder/api/history', (_req, res) => {

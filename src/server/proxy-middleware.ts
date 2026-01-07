@@ -10,6 +10,12 @@ export function createSessionMiddleware(
 ) {
     return async (req: Request, res: Response, next: NextFunction) => {
         const { sessionId } = req.params;
+
+        // Skip ignored endpoints
+        if (!recorder.shouldRecord(req.method, req.originalUrl)) {
+            return next();
+        }
+
         const isAction = recorder.isActionEndpoint(req.method, req.path);
 
         // Create interaction record

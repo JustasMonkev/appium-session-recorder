@@ -16,10 +16,26 @@ function parseArgs(): Partial<RecorderOptions> & { help?: boolean; version?: boo
         } else if (arg === '--version' || arg === '-v') {
             parsed.version = true;
         } else if (arg === '--port' || arg === '-p') {
+            if (i + 1 >= args.length) {
+                console.error('Error: --port requires a value');
+                process.exit(1);
+            }
             parsed.port = Number(args[++i]);
+            if (isNaN(parsed.port)) {
+                console.error('Error: --port must be a number');
+                process.exit(1);
+            }
         } else if (arg === '--appium-url' || arg === '-u') {
+            if (i + 1 >= args.length) {
+                console.error('Error: --appium-url requires a value');
+                process.exit(1);
+            }
             parsed.appiumUrl = args[++i];
         } else if (arg === '--host') {
+            if (i + 1 >= args.length) {
+                console.error('Error: --host requires a value');
+                process.exit(1);
+            }
             parsed.host = args[++i];
         }
     }
@@ -85,7 +101,7 @@ export async function runCLI() {
             const configToSave: RecorderOptions = {
                 port: promptConfig.port!,
                 appiumUrl: promptConfig.appiumUrl!,
-                host: '127.0.0.1',
+                host: promptConfig.host || '127.0.0.1',
             };
             saveConfig(configToSave);
             p.outro('✅ Configuration saved to .appiumrc.json');

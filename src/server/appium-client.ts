@@ -4,8 +4,11 @@ export class AppiumClient {
     async fetchFromAppium(sessionId: string, endpoint: string): Promise<any> {
         try {
             const response = await fetch(`${this.appiumUrl}/session/${sessionId}/${endpoint}`);
-            const data = await response.json() as { value: any };
-            return data.value;
+            const data = await response.json();
+            if (data && typeof data === 'object' && 'value' in data) {
+                return data.value;
+            }
+            return null;
         } catch (e) {
             return null;
         }

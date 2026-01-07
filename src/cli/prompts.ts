@@ -18,6 +18,15 @@ export async function runPrompts(): Promise<Partial<RecorderOptions> & { saveCon
                     }
                 },
             }),
+            host: () => p.text({
+                message: 'Proxy host:',
+                initialValue: '127.0.0.1',
+                validate: (value) => {
+                    if (!value || value.trim().length === 0) {
+                        return 'Please enter a valid host';
+                    }
+                },
+            }),
             appiumUrl: () => p.text({
                 message: 'Appium server URL:',
                 initialValue: 'http://127.0.0.1:4723',
@@ -44,6 +53,7 @@ export async function runPrompts(): Promise<Partial<RecorderOptions> & { saveCon
 
     return {
         port: Number(answers.port),
+        host: answers.host as string,
         appiumUrl: answers.appiumUrl as string,
         saveConfig: answers.saveConfig as boolean,
     };

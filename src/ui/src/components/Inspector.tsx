@@ -41,7 +41,76 @@ export const Inspector: Component<InspectorProps> = (props) => {
                 found = elements.filter(el => el.type === value);
                 break;
             case 'xpath':
-                found = elements.filter(el => el.xpath === value);
+                // Properly evaluate XPath against the XML source
+                if (props.interaction?.source) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(props.interaction.source, 'text/xml');
+                        const result = doc.evaluate(value, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                        const matchedNodes: Element[] = [];
+                        for (let i = 0; i < result.snapshotLength; i++) {
+                            const node = result.snapshotItem(i);
+                            if (node && node.nodeType === 1) {
+                                matchedNodes.push(node as Element);
+                            }
+                        }
+                        // Match found nodes back to parsed elements
+                        found = elements.filter(el => matchedNodes.some(node => el.node.isEqualNode(node)));
+                    } catch (e) {
+                        console.error('Invalid XPath expression:', e);
+                    }
+                }
+                break;
+            case '-ios predicate string':
+                // iOS predicate string matching (simplified attribute matching)
+                found = elements.filter(el => {
+                    // Parse simple predicates like "name == 'value'" or "label CONTAINS 'text'"
+                    const predicateLower = value.toLowerCase();
+                    if (predicateLower.includes('name')) {
+                        const match = value.match(/name\s*(==|CONTAINS)\s*['"](.*)['"]/i);
+                        if (match) {
+                            return match[1] === '=='
+                                ? el.name === match[2]
+                                : el.name.includes(match[2]);
+                        }
+                    }
+                    if (predicateLower.includes('label')) {
+                        const match = value.match(/label\s*(==|CONTAINS)\s*['"](.*)['"]/i);
+                        if (match) {
+                            return match[1] === '=='
+                                ? el.label === match[2]
+                                : el.label.includes(match[2]);
+                        }
+                    }
+                    if (predicateLower.includes('type')) {
+                        const match = value.match(/type\s*(==|CONTAINS)\s*['"](.*)['"]/i);
+                        if (match) {
+                            return match[1] === '=='
+                                ? el.type === match[2]
+                                : el.type.includes(match[2]);
+                        }
+                    }
+                    return false;
+                });
+                break;
+            case '-ios class chain':
+                // iOS class chain matching (simplified type/index matching)
+                // Format: **/XCUIElementTypeButton[`name == "buttonName"`]
+                const classChainMatch = value.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
+                if (classChainMatch) {
+                    const targetType = classChainMatch[1];
+                    const predicate = classChainMatch[2];
+                    found = elements.filter(el => {
+                        if (el.type !== targetType) return false;
+                        if (!predicate) return true;
+                        // Simple predicate matching within class chain
+                        const nameMatch = predicate.match(/name\s*==\s*['"](.*)['"]/i);
+                        if (nameMatch) return el.name === nameMatch[1];
+                        const labelMatch = predicate.match(/label\s*==\s*['"](.*)['"]/i);
+                        if (labelMatch) return el.label === labelMatch[1];
+                        return true;
+                    });
+                }
                 break;
         }
 
@@ -110,6 +179,8 @@ export const Inspector: Component<InspectorProps> = (props) => {
                                             <option value="accessibility id">accessibility id</option>
                                             <option value="xpath">xpath</option>
                                             <option value="class name">class name</option>
+                                            <option value="-ios predicate string">-ios predicate string</option>
+                                            <option value="-ios class chain">-ios class chain</option>
                                         </select>
                                         <input
                                             type="text"
@@ -131,35 +202,6 @@ export const Inspector: Component<InspectorProps> = (props) => {
                                     </Show>
                                 </div>
                             </div>
-
-                            {/* Element Browser */}
-                            <div class="inspector-section">
-                                <h3>Elements ({parsedElements().length})</h3>
-                                <div class="elements-browser">
-                                    <For each={parsedElements().slice(0, 50)}>
-                                        {(element) => (
-                                            <div
-                                                class="element-item"
-                                                classList={{ selected: selectedElement()?.xpath === element.xpath }}
-                                                onClick={(e) => selectElement(element, e)}
-                                            >
-                                                <span class="element-type">{element.type}</span>
-                                                <Show when={element.name || element.label}>
-                                                    <span class="element-name">
-                                                        {element.name || element.label}
-                                                    </span>
-                                                </Show>
-                                            </div>
-                                        )}
-                                    </For>
-                                    <Show when={parsedElements().length > 50}>
-                                        <div class="elements-more">
-                                            ... and {parsedElements().length - 50} more elements
-                                        </div>
-                                    </Show>
-                                </div>
-                            </div>
-
                             <Show when={selectedElement()}>
                                 <div class="inspector-section">
                                     <h3>Element Details</h3>

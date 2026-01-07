@@ -24,6 +24,7 @@ export function useInteractions() {
         const unsubscribe = api.connectToStream((event) => {
             if (event.type === 'init') {
                 setInteractions(event.data);
+                setLoading(false);
             } else if (event.type === 'interaction') {
                 setInteractions(prev => {
                     const existing = prev.findIndex(i => i.id === event.data.id);
@@ -45,8 +46,8 @@ export function useInteractions() {
         onCleanup(unsubscribe);
     });
 
-    // Initial load
-    loadHistory();
+    // Note: loadHistory() is not called here because the SSE stream
+    // already sends the complete initial history via the 'init' event
 
     async function clearHistory() {
         await api.clearHistory();

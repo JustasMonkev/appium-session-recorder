@@ -69,10 +69,11 @@
 }
 
 .interaction-path {
-    font-family: 'Courier New', monospace;
     color: var(--color-text-secondary);
     font-size: var(--font-size-sm);
     word-break: break-all;
+    overflow-wrap: break-word;
+    max-width: 100%;
 }
 
 .interaction-time {
@@ -86,6 +87,8 @@
     border-radius: var(--radius-md);
     margin-top: var(--spacing-3);
     font-size: var(--font-size-sm);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .element-info-using {
@@ -95,6 +98,7 @@
 
 .element-info-value {
     color: var(--color-text-primary);
+    word-break: break-all;
 }
 
 .interaction-body {
@@ -102,10 +106,13 @@
     padding: var(--spacing-4);
     border-radius: var(--radius-md);
     margin-top: var(--spacing-3);
-    font-family: 'Courier New', monospace;
+
     font-size: var(--font-size-xs);
-    overflow-x: auto;
+    overflow: auto;
+    max-height: 200px;
     border: 1px solid var(--color-border);
+    white-space: pre-wrap;
+    word-break: break-all;
 }
 
 .screenshot-container {

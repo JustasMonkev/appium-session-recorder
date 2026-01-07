@@ -64,6 +64,7 @@
     flex: 1;
     overflow-y: auto;
     padding-right: var(--spacing-2);
+    max-height: calc(90vh - var(--spacing-12));
 }
 
 .inspector-section {
@@ -107,7 +108,7 @@
 
 .query-input {
     flex: 1;
-    font-family: 'Courier New', monospace;
+
 }
 
 .query-btn {
@@ -155,7 +156,7 @@
 
 .attr-value {
     color: var(--color-text-primary);
-    font-family: 'Courier New', monospace;
+
 }
 
 .locators-list {
@@ -187,7 +188,7 @@
 
 .locator-value {
     flex: 1;
-    font-family: 'Courier New', monospace;
+
     font-size: var(--font-size-xs);
     color: var(--color-text-primary);
     word-break: break-all;
@@ -213,17 +214,6 @@
         opacity: 1;
         transform: translate(-50%, -50%);
     }
-}
-
-/* Element Browser */
-.elements-browser {
-    max-height: 200px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-1);
-    -webkit-overflow-scrolling: touch;
 }
 
 .element-item {
@@ -258,7 +248,7 @@
 
 .element-name {
     color: var(--color-text-secondary);
-    font-family: 'Courier New', monospace;
+
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -296,7 +286,7 @@
     background: var(--color-bg-elevated);
     padding: var(--spacing-4);
     border-radius: var(--radius-md);
-    font-family: 'Courier New', monospace;
+
     font-size: var(--font-size-xs);
     max-height: 300px;
     overflow: auto;

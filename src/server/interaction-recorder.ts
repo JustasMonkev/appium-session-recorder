@@ -5,6 +5,18 @@ export class InteractionRecorder {
     private interactionId = 0;
     private listeners: Set<(event: ServerEvent) => void> = new Set();
 
+    private ignoredEndpoints = [
+        /\/window\/rect$/,
+        /\/timeouts$/,
+    ];
+
+    shouldRecord(method: string, path: string): boolean {
+        if (method === 'GET') {
+            return !this.ignoredEndpoints.some(pattern => pattern.test(path));
+        }
+        return true;
+    }
+
     isActionEndpoint(method: string, path: string): boolean {
         const actionPatterns = [
             /\/element\/[^/]+\/click$/,

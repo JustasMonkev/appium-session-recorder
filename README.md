@@ -66,7 +66,7 @@ http://localhost:4724/_recorder
 ### CLI Options
 
 ```bash
-bun run cli [options]
+@ [options]
 
 OPTIONS:
   -p, --port <number>        Proxy server port (default: 4724)
