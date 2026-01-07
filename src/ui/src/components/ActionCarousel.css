@@ -1,0 +1,125 @@
+.carousel {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4) var(--spacing-6);
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.carousel-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-3);
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-sm);
+}
+
+.carousel-empty-icon {
+    font-size: var(--font-size-xl);
+}
+
+.carousel-btn {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    padding: var(--spacing-3) var(--spacing-5);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.carousel-btn:hover:not(:disabled) {
+    background: var(--color-accent-primary);
+    color: white;
+    border-color: var(--color-accent-primary);
+}
+
+.carousel-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.carousel-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.carousel-counter {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-weight-medium);
+}
+
+.carousel-details {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.carousel-id {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-weight-medium);
+}
+
+.carousel-method {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    text-transform: uppercase;
+}
+
+.carousel-method.POST {
+    background: rgba(46, 213, 115, 0.2);
+    color: var(--color-accent-success);
+}
+
+.carousel-method.GET {
+    background: rgba(255, 159, 67, 0.2);
+    color: var(--color-accent-warning);
+}
+
+.carousel-method.DELETE {
+    background: rgba(255, 107, 107, 0.2);
+    color: var(--color-accent-error);
+}
+
+.carousel-path {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.carousel-time {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+}
+
+.carousel-element {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+}
+
+.carousel-element-using {
+    color: var(--color-accent-secondary);
+    font-weight: var(--font-weight-medium);
+}
+
+.carousel-element-value {
+    color: var(--color-accent-primary);
+}

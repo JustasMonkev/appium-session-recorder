@@ -1,94 +1,180 @@
 # Appium Session Recorder
 
-A proxy server that sits between Appium Inspector and your Appium server to record all interactions, capture screenshots, and provide element inspection capabilities.
+A modern, interactive CLI tool that records Appium sessions with real-time UI visualization and element inspection. Built with Bun, Solid.js, and Kobalte.
 
-## How It Works
+## ✨ Features
 
-```
-┌─────────────────────┐      ┌─────────────────────┐      ┌─────────────────────┐
-│   Appium Inspector  │ ──── │   Session Recorder  │ ──── │    Appium Server    │
-│   (localhost:4724)  │      │   (localhost:4724)  │      │   (localhost:4723)  │
-└─────────────────────┘      └─────────────────────┘      └─────────────────────┘
-```
+- 🎬 **Session Recording**: Intercepts and logs Appium commands (currently focused on `POST /session/:sessionId/*`)
+- 📸 **Screenshot Capture**: Automatically captures screenshots after actions
+- 🔍 **Element Inspector**: Interactive element inspection with multiple locator strategies
+- 🎯 **Query Tester**: Test locators in real-time on captured screenshots
+- 📊 **Real-time Updates**: Live dashboard with Server-Sent Events
+- 🎨 **Modern UI**: Beautiful dark theme with vibrant accents using Solid.js + Kobalte
+- ⚡ **Fast**: Built with Bun for optimal performance
+- 🛠️ **Interactive CLI**: Beautiful prompts for easy configuration
 
-1. **Appium Inspector** connects to the proxy (port 4724)
-2. **Session Recorder** intercepts all requests and logs them
-3. For action commands (click, type, etc.), it captures screenshots and page source
-4. All requests are forwarded to the **Appium Server** (port 4723)
-5. View recorded interactions at `http://localhost:4724/_recorder`
-
-## Setup
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - [Bun](https://bun.sh/) runtime installed
-- Appium server running (default: `http://127.0.0.1:4723`)
+- [Appium](https://appium.io/) server installed
+
+### Start Appium Server
+
+Start the Appium server (CORS is only needed if you plan to call Appium directly from a browser):
+
+```bash
+appium --port 4723 --allow-cors
+```
+
+The recorder proxy itself does not require `--allow-cors` for normal usage.
 
 ### Installation
 
 ```bash
+cd appium-session-recorder # (or your cloned folder name)
 bun install
 ```
 
-### Start the Recorder
+### Run the CLI
 
 ```bash
-bun start
+bun run cli
 ```
 
-This starts the proxy on `http://127.0.0.1:4724`
+The CLI will interactively prompt you for:
+- **Proxy port** (default: 4724)
+- **Proxy host** (default: 127.0.0.1)
+- **Appium server URL** (default: http://127.0.0.1:4723)
+
+Alternatively, use command-line arguments:
+
+```bash
+bun run cli --port 8080 --appium-url http://192.168.1.100:4723
+```
 
 ### Configure Appium Inspector
 
-In Appium Inspector, change the **Remote Host** and **Remote Port** settings:
+Point Appium Inspector to the recorder proxy:
 
 | Setting | Value |
 |---------|-------|
 | Remote Host | `127.0.0.1` |
-| Remote Port | `4724` |
+| Remote Port | `4724` (or your configured port) |
 | Remote Path | `/` |
 
-**Important:** Point Appium Inspector to the proxy port (`4724`), not the Appium server port (`4723`).
+### Access the UI
 
-## Configuration
-
-Environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `APPIUM_URL` | `http://127.0.0.1:4723` | URL of your Appium server |
-| `PROXY_HOST` | `127.0.0.1` | Host for the proxy server |
-| `PROXY_PORT` | `4724` | Port for the proxy server |
-
-Example:
-
-```bash
-APPIUM_URL=http://192.168.1.100:4723 PROXY_PORT=8080 bun start
+Open your browser to:
+```
+http://localhost:4724/_recorder
 ```
 
-## Features
+## 📖 Usage
 
-### Web Viewer (`/_recorder`)
+## Security (Local-Only Tool)
 
-Access `http://localhost:4724/_recorder` to:
+This project is intended for **local testing and development**. It runs an unauthenticated proxy/UI that can forward commands to Appium. For normal usage, keep it bound to localhost and do not expose it to untrusted networks.
 
-- View all recorded interactions in real-time
-- See screenshots captured after each action
-- Inspect XML page source
-- Export session history as JSON
+**Current known gaps (will be addressed in future updates):**
+- Missing validation for `sessionId`
+- Missing validation for `appiumUrl`
+- Rate limiting for API endpoints
+- Authentication/authorization (likely optional, since local-by-default is intentional)
+
+**Practical guidance:**
+- Run the recorder on `127.0.0.1` only (default) and avoid port-forwarding/sharing the port.
+- Be cautious with `appium --allow-cors`; treat the recorder + Appium as a local dev surface while running.
+- Page source is untrusted input; XML is rendered as text (not HTML) to mitigate XSS.
+
+### CLI Options
+
+```bash
+bun run cli [options]
+
+OPTIONS:
+  -p, --port <number>        Proxy server port (default: 4724)
+  -u, --appium-url <url>     Appium server URL (default: http://127.0.0.1:4723)
+  --host <host>              Proxy server host (default: 127.0.0.1)
+  -h, --help                 Show help message
+  -v, --version              Show version
+```
+
+Configuration priority (highest to lowest):
+1. Command-line arguments
+2. Interactive prompts
+3. Environment variables
+4. Default values
+
+### Environment Variables
+
+```bash
+APPIUM_URL=http://192.168.1.100:4723
+PROXY_PORT=8080
+PROXY_HOST=127.0.0.1
+
+bun run cli
+```
+
+## 🎨 UI Features
+
+### Dashboard
+
+- **Total Requests**: Count of all intercepted requests
+- **Actions**: Requests with screenshots (clicks, inputs, etc.)
+- **Real-time Updates**: Automatically refreshes as you interact
+
+### Timeline
+
+- View all interactions in chronological order
+- Color-coded by HTTP method (mostly `POST`)
+- **Action markers** for requests with screenshots
+- Click screenshots to open inspector
 
 ### Element Inspector
 
-Click on any screenshot in the viewer to open the element inspector:
+- **Query Tester**: Test different locator strategies
+  - accessibility id
+  - xpath
+  - class name
+  - iOS predicate string
+  - iOS class chain
+- **Element Details**: View element properties (name, label, value, bounds)
+- **Locators**: Auto-generated locators ready to copy
+- **Click to copy**: One-click locator copying
 
-- Test locator queries (accessibility id, xpath, class name, iOS predicates)
-- View element attributes and bounds
-- Copy locators to clipboard
+## 🔧 Development
 
-### Recorded Actions
+### Build the UI
 
-The following actions trigger screenshot/source capture:
+```bash
+cd src/ui
+bun run build
+```
 
+### Run in Development Mode
+
+```bash
+# Terminal 1: Build UI in watch mode
+cd src/ui
+bun run dev
+
+# Terminal 2: Run CLI
+bun run cli
+```
+
+### Build for Production
+
+```bash
+bun run build
+```
+
+This builds both the UI and the CLI executable.
+
+## 📦 What's Recorded
+
+The recorder captures:
 - Element clicks
 - Text input (value)
 - Element clear
@@ -96,10 +182,30 @@ The following actions trigger screenshot/source capture:
 - Touch actions
 - Navigation (back, forward, refresh)
 
-## API Endpoints
+For each action:
+- ✅ Request details (method, path, body)
+- ✅ Screenshot (base64)
+- ✅ Page source (XML)
+- ✅ Timestamp
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/_recorder` | GET | Web viewer UI |
-| `/_recorder/history` | GET | Get recorded interactions as JSON |
-| `/_recorder/history` | DELETE | Clear recorded history |
+## 🎯 Use Cases
+
+- **Test Debugging**: Review session history to debug failing tests
+- **Element Discovery**: Find reliable locators for automation
+- **Training**: Show team members how to interact with the app
+- **Test Recording**: Generate test scripts from recorded interactions
+
+## 🤝 Architecture
+
+```
+┌─────────────────────┐      ┌─────────────────────┐      ┌─────────────────────┐
+│  Appium Inspector   │ ──── │  Session Recorder   │ ──── │   Appium Server     │
+│  (localhost:4724)   │      │   (Bun + Express)   │      │  (localhost:4723)   │
+└─────────────────────┘      └─────────────────────┘      └─────────────────────┘
+                                        │
+                                        ▼
+                              ┌─────────────────────┐
+                              │   Web UI (Solid.js) │
+                              │  Real-time Updates  │
+                              └─────────────────────┘
+```

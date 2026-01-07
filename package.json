@@ -1,21 +1,54 @@
 {
-  "name": "appium-websocket",
-  "version": "1.0.0",
-  "description": "",
-  "main": "dist/index.js",
+  "name": "appium-session-recorder",
+  "version": "0.0.1",
+  "description": "Interactive Appium session recorder with modern UI",
+  "type": "module",
+  "bin": {
+    "appium-recorder": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "appium",
+    "mobile-testing",
+    "test-automation",
+    "session-recorder",
+    "element-inspector",
+    "ios-testing",
+    "android-testing",
+    "qa-tools"
+  ],
   "scripts": {
-    "start": "bun src/recorder.ts"
+    "cli": "bun run src/index.ts",
+    "dev": "bun run src/index.ts",
+    "build": "bun run build:ui && bun build src/index.ts --outdir dist --target bun",
+    "build:ui": "cd src/ui && bun run build"
   },
   "dependencies": {
-    "@types/express": "^5.0.6",
+    "@clack/prompts": "^0.7.0",
+    "@kobalte/core": "^0.13.7",
     "express": "^5.2.1",
     "fast-diff": "^1.3.0",
     "fast-xml-parser": "^5.3.3",
-    "http-proxy-middleware": "^3.0.5"
+    "http-proxy-middleware": "^3.0.5",
+    "solid-js": "^1.9.3"
   },
   "devDependencies": {
     "@types/bun": "^1.3.5",
-    "typescript": "^5.5.3"
+    "@types/express": "^5.0.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.11",
+    "vite-plugin-solid": "^2.10.2"
   },
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "JustasMonkev <> (https://github.com/JustasMonkev)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JustasMonkev/appium-session-recorder"
+  }
 }
