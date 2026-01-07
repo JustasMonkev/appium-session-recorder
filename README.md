@@ -18,7 +18,17 @@ A modern, interactive CLI tool that records Appium sessions with real-time UI vi
 ### Prerequisites
 
 - [Bun](https://bun.sh/) runtime installed
-- Appium server running (default: `http://127.0.0.1:4723`)
+- [Appium](https://appium.io/) server installed
+
+### Start Appium Server
+
+Start the Appium server with CORS enabled:
+
+```bash
+appium --port 4723 --allow-cors
+```
+
+The `--allow-cors` flag is required for the session recorder to work correctly.
 
 ### Installation
 
@@ -66,11 +76,11 @@ http://localhost:4724/_recorder
 ### CLI Options
 
 ```bash
-@ [options]
+bun run cli [options]
 
 OPTIONS:
   -p, --port <number>        Proxy server port (default: 4724)
-  -u, --appium-url <url>     Appium server URL (default: http://127.0.0. 1:4723)
+  -u, --appium-url <url>     Appium server URL (default: http://127.0.0.1:4723)
   --host <host>              Proxy server host (default: 127.0.0.1)
   -h, --help                 Show help message
   -v, --version              Show version
@@ -136,7 +146,6 @@ bun run cli
 
 - **Refresh**: Manually refresh the timeline
 - **Clear History**: Remove all recorded interactions
-- **Export JSON**: Download session history as JSON
 
 ## 🏗️ Project Structure
 

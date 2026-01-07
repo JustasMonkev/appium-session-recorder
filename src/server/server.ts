@@ -1,9 +1,9 @@
 import express from 'express';
-import type { RecorderOptions } from './types.js';
-import { AppiumClient } from './appium-client.js';
-import { InteractionRecorder } from './interaction-recorder.js';
-import { createSessionMiddleware, createAppiumProxy } from './proxy-middleware.js';
-import { createRoutes } from './routes.js';
+import type { RecorderOptions } from './types';
+import { AppiumClient } from './appium-client';
+import { InteractionRecorder } from './interaction-recorder';
+import { createSessionMiddleware, createAppiumProxy } from './proxy-middleware';
+import { createRoutes } from './routes';
 
 export function createServer(options: RecorderOptions = {}) {
     const appiumUrl = options.appiumUrl ?? 'http://127.0.0.1:4723';
@@ -13,8 +13,8 @@ export function createServer(options: RecorderOptions = {}) {
     const recorder = new InteractionRecorder();
 
     // Parse JSON bodies
-    app.use(express.json({ type: ['application/json', 'application/*+json'] }));
-    app.use(express.urlencoded({ extended: true }));
+    app.use(express.json({ type: ['application/json', 'application/*+json'], limit: '100mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
     // Register routes
     app.use(createRoutes(recorder));

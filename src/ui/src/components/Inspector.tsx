@@ -129,12 +129,6 @@ export const Inspector: Component<InspectorProps> = (props) => {
         return el ? generateLocators(el) : [];
     };
 
-    const selectElement = (element: ParsedElement, e: MouseEvent) => {
-        e.stopPropagation();
-        setSelectedElement(element);
-        setFoundElements([element]);
-    };
-
     const resetState = () => {
         setSelectedElement(null);
         setQueryStrategy('accessibility id');

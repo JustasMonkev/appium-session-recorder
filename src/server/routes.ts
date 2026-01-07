@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { InteractionRecorder } from './interaction-recorder.js';
+import type { InteractionRecorder } from './interaction-recorder';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

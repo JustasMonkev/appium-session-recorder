@@ -4,7 +4,6 @@ import './Controls.css';
 type ControlsProps = {
     onRefresh: () => void;
     onClear: () => void;
-    onExport: () => void;
 };
 
 export const Controls: Component<ControlsProps> = (props) => {
@@ -21,9 +20,6 @@ export const Controls: Component<ControlsProps> = (props) => {
             </button>
             <button class="btn btn-danger" onClick={handleClear}>
                 🗑️ Clear History
-            </button>
-            <button class="btn btn-secondary" onClick={props.onExport}>
-                📥 Export JSON
             </button>
         </div>
     );

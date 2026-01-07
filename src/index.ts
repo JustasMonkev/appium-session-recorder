@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { runCLI } from './cli/index.js';
+import { runCLI } from './cli/index';
 
 runCLI().catch((error) => {
     console.error('Fatal error:', error);

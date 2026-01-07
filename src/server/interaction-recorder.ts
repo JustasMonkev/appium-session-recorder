@@ -1,20 +1,15 @@
-import type { Interaction, ServerEvent } from './types.js';
+import type { Interaction, ServerEvent } from './types';
 
 export class InteractionRecorder {
     private history: Interaction[] = [];
     private interactionId = 0;
     private listeners: Set<(event: ServerEvent) => void> = new Set();
 
-    private ignoredEndpoints = [
-        /\/window\/rect$/,
-        /\/timeouts$/,
-    ];
-
     shouldRecord(method: string, path: string): boolean {
-        if (method === 'GET') {
-            return !this.ignoredEndpoints.some(pattern => pattern.test(path));
+        if (method === 'POST') {
+            return true;
         }
-        return true;
+        return false;
     }
 
     isActionEndpoint(method: string, path: string): boolean {

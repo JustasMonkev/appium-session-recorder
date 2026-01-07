@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
-import type { RecorderOptions } from '../server/types.js';
+import type { RecorderOptions } from '../server/types';
 
-export async function runPrompts(): Promise<Partial<RecorderOptions> & { saveConfig: boolean }> {
+export async function runPrompts(): Promise<Partial<RecorderOptions>> {
     console.clear();
 
     p.intro('🎬 Appium Session Recorder');
@@ -38,10 +38,6 @@ export async function runPrompts(): Promise<Partial<RecorderOptions> & { saveCon
                     }
                 },
             }),
-            saveConfig: () => p.confirm({
-                message: 'Save configuration to .appiumrc.json?',
-                initialValue: true,
-            }),
         },
         {
             onCancel: () => {
@@ -55,6 +51,5 @@ export async function runPrompts(): Promise<Partial<RecorderOptions> & { saveCon
         port: Number(answers.port),
         host: answers.host as string,
         appiumUrl: answers.appiumUrl as string,
-        saveConfig: answers.saveConfig as boolean,
     };
 }

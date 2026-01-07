@@ -1,6 +1,5 @@
 import { type Component, createSignal } from 'solid-js';
 import { useInteractions } from './hooks/useInteractions';
-import { Stats } from './components/Stats';
 import { Controls } from './components/Controls';
 import { Timeline } from './components/Timeline';
 import { Inspector } from './components/Inspector';
@@ -8,7 +7,7 @@ import type { Interaction } from './types';
 import './App.css';
 
 const App: Component = () => {
-    const { interactions, stats, clearHistory, refresh } = useInteractions();
+    const { interactions, clearHistory, refresh } = useInteractions();
     const [inspectorOpen, setInspectorOpen] = createSignal(false);
     const [inspectorInteraction, setInspectorInteraction] = createSignal<Interaction | null>(null);
 
@@ -43,8 +42,6 @@ const App: Component = () => {
                     onClear={clearHistory}
                     onExport={handleExport}
                 />
-
-                <Stats total={stats().total} actions={stats().actions} />
 
                 <Timeline
                     interactions={interactions()}

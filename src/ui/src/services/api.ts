@@ -3,11 +3,19 @@ import type { Interaction } from '../types';
 class ApiClient {
     async getHistory(): Promise<Interaction[]> {
         const response = await fetch('/_recorder/api/history');
+
+        if(!response.ok) {
+            throw new Error(`Failed to fetch history: ${response.statusText}`);
+        }
+
         return response.json();
     }
 
     async clearHistory(): Promise<void> {
-        await fetch('/_recorder/api/history', { method: 'DELETE' });
+        const response = await fetch('/_recorder/api/clear', { method: 'POST' });
+        if(!response.ok) {
+            throw new Error(`Failed to clear history: ${response.statusText}`);
+        }
     }
 
     connectToStream(onEvent: (event: any) => void): () => void {

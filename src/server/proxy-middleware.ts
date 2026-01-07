@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
-import type { Interaction } from './types.js';
-import { AppiumClient } from './appium-client.js';
-import { InteractionRecorder } from './interaction-recorder.js';
+import type { Interaction } from './types';
+import { AppiumClient } from './appium-client';
+import { InteractionRecorder } from './interaction-recorder';
 
 export function createSessionMiddleware(
     recorder: InteractionRecorder,

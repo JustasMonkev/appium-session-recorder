@@ -1,6 +1,6 @@
 {
   "name": "appium-session-recorder",
-  "version": "2.0.0",
+  "version": "0.0.1",
   "description": "Interactive Appium session recorder with modern UI",
   "type": "module",
   "bin": {
@@ -28,5 +28,14 @@
     "vite": "^5.4.11",
     "vite-plugin-solid": "^2.10.2"
   },
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  },
+
+  "author": "JustasMonkev <> (https://github.com/JustasMonkev)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JustasMonkev/appium-session-recorder"
+  }
 }

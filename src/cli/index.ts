@@ -1,8 +1,7 @@
 import * as p from '@clack/prompts';
-import { resolveConfig, saveConfig } from './config.js';
-import { runPrompts } from './prompts.js';
-import { startServer } from '../server/index.js';
-import type { RecorderOptions } from '../server/types.js';
+import { runPrompts } from './prompts';
+import { startServer } from '../server/index';
+import type { RecorderOptions } from '../server/types';
 
 function parseArgs(): Partial<RecorderOptions> & { help?: boolean; version?: boolean } {
     const args = process.argv.slice(2);
@@ -65,9 +64,8 @@ CONFIGURATION:
   Configuration is resolved in this order (highest to lowest priority):
   1. Command-line arguments
   2. Interactive prompts
-  3. .appiumrc.json file (current directory or home directory)
-  4. Environment variables (PROXY_PORT, APPIUM_URL, PROXY_HOST)
-  5. Default values
+  3. Environment variables (PROXY_PORT, APPIUM_URL, PROXY_HOST)
+  4. Default values
 `);
 }
 
@@ -91,25 +89,12 @@ export async function runCLI() {
     // Determine if we need to run interactive prompts
     const hasRequiredArgs = args.port !== undefined || args.appiumUrl !== undefined;
 
-    let promptConfig: Partial<RecorderOptions> & { saveConfig?: boolean } = {};
+    let promptConfig: Partial<RecorderOptions> = {};
 
     if (!hasRequiredArgs) {
         // Run interactive prompts
         promptConfig = await runPrompts();
-
-        if (promptConfig.saveConfig) {
-            const configToSave: RecorderOptions = {
-                port: promptConfig.port!,
-                appiumUrl: promptConfig.appiumUrl!,
-                host: promptConfig.host || '127.0.0.1',
-            };
-            saveConfig(configToSave);
-            p.outro('✅ Configuration saved to .appiumrc.json');
-        }
     }
-
-    // Resolve final configuration
-    const config = resolveConfig(args, promptConfig);
 
     // Display startup banner
     console.log('');
@@ -120,14 +105,14 @@ export async function runCLI() {
 
     try {
         // Start server
-        startServer(config);
+        startServer();
         s.stop('✅ Server initialized');
 
         console.log('');
         console.log(`📊 Configuration:`);
-        console.log(`   Port:       ${config.port}`);
-        console.log(`   Appium URL: ${config.appiumUrl}`);
-        console.log(`   Host:       ${config.host}`);
+        console.log(`   Port:       ${promptConfig.port}`);
+        console.log(`   Appium URL: ${promptConfig.appiumUrl}`);
+        console.log(`   Host:       ${promptConfig.host}`);
 
         p.outro('🚀 Server is running! Press Ctrl+C to stop.');
     } catch (error) {
