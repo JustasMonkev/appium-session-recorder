@@ -1,4 +1,4 @@
-import { type Component, createSignal, Show, For, createEffect } from 'solid-js';
+import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup } from 'solid-js';
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
@@ -16,6 +16,7 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
     const [copiedText, setCopiedText] = createSignal<string | null>(null);
     const [queryError, setQueryError] = createSignal<string | null>(null);
+    const [xmlPreRef, setXmlPreRef] = createSignal<HTMLPreElement | undefined>(undefined);
 
     // Reset state when interaction changes
     createEffect(() => {
@@ -155,6 +156,13 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         return formatted;
     };
 
+    // Defense-in-depth: render XML as textContent (never HTML)
+    createRenderEffect(() => {
+        const el = xmlPreRef();
+        if (!el) return;
+        el.textContent = formatXml(props.interaction?.source || '');
+    });
+
     return (
         <div class="main-inspector">
             <Show
@@ -276,13 +284,21 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                         </Show>
                     </div>
 
-                    {/* XML Source Section */}
-                    <div class="xml-section">
-                        <h3 class="section-title">XML Source</h3>
-                        <pre class="xml-source">{formatXml(props.interaction!.source || '')}</pre>
-                    </div>
-                </div>
-            </Show>
-        </div>
-    );
+	                    {/* XML Source Section */}
+	                    <div class="xml-section">
+	                        <h3 class="section-title">XML Source</h3>
+	                        <pre
+	                            ref={(el) => {
+	                                setXmlPreRef(el);
+	                                onCleanup(() => {
+	                                    setXmlPreRef(undefined);
+	                                });
+	                            }}
+	                            class="xml-source"
+	                        />
+	                    </div>
+	                </div>
+	            </Show>
+	        </div>
+	    );
 };

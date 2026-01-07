@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import { runPrompts } from './prompts';
-import { startServer } from '../server/index';
-import type { RecorderOptions } from '../server/types';
+import { startServer } from '../server';
+import type { RecorderOptions } from '../server';
 
 function parseArgs(): Partial<RecorderOptions> & { help?: boolean; version?: boolean } {
     const args = process.argv.slice(2);
@@ -105,7 +105,7 @@ export async function runCLI() {
 
     try {
         // Start server
-        startServer();
+        startServer(promptConfig);
         s.stop('✅ Server initialized');
 
         console.log('');

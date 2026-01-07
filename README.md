@@ -73,6 +73,21 @@ http://localhost:4724/_recorder
 
 ## 📖 Usage
 
+## Security (Local-Only Tool)
+
+This project is intended for **local testing and development**. It runs an unauthenticated proxy/UI that can forward commands to Appium. For normal usage, keep it bound to localhost and do not expose it to untrusted networks.
+
+**Current known gaps (will be addressed in future updates):**
+- Missing validation for `sessionId`
+- Missing validation for `appiumUrl`
+- UI hardening for untrusted XML rendering (XSS defense-in-depth)
+- Rate limiting for API endpoints
+- Authentication/authorization (likely optional, since local-by-default is intentional)
+
+**Practical guidance:**
+- Run the recorder on `127.0.0.1` only (default) and avoid port-forwarding/sharing the port.
+- Be cautious with `appium --allow-cors`; treat the recorder + Appium as a local dev surface while running.
+
 ### CLI Options
 
 ```bash
@@ -128,47 +143,6 @@ bun run cli
 - **Element Details**: View element properties (name, label, value, bounds)
 - **Locators**: Auto-generated locators ready to copy
 - **Click to copy**: One-click locator copying
-
-### Controls
-
-- **Refresh**: Manually refresh the timeline
-- **Clear History**: Remove all recorded interactions
-
-## 🏗️ Project Structure
-
-```
-appium-session-recorder/
-├── src/
-│   ├── server/              # Backend modules
-│   │   ├── types.ts         # Type definitions
-│   │   ├── appium-client.ts # Appium communication
-│   │   ├── interaction-recorder.ts  # Recording logic
-│   │   ├── proxy-middleware.ts      # HTTP proxy
-│   │   ├── routes.ts        # API routes
-│   │   ├── server.ts        # Express server
-│   │   └── index.ts         # Public API
-│   ├── cli/                 # CLI implementation
-│   │   ├── config.ts        # Configuration management
-│   │   ├── prompts.ts       # Interactive prompts
-│   │   └── index.ts         # CLI entry point
-│   ├── ui/                  # Solid.js frontend
-│   │   ├── src/
-│   │   │   ├── components/  # UI components
-│   │   │   ├── hooks/       # Solid.js hooks
-│   │   │   ├── services/    # API client
-│   │   │   ├── utils/       # Utilities
-│   │   │   ├── styles/      # Design tokens
-│   │   │   ├── App.tsx      # Main app
-│   │   │   └── index.tsx    # Entry point
-│   │   ├── index.html       # HTML template
-│   │   ├── vite.config.ts   # Vite configuration
-│   │   └── package.json     # UI dependencies
-│   └── index.ts             # Main executable
-├── dist/                    # Build output
-│   └── ui/                  # Compiled frontend
-├── package.json
-└── README.md
-```
 
 ## 🔧 Development
 
