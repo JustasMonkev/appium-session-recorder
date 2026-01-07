@@ -4,7 +4,7 @@ A modern, interactive CLI tool that records Appium sessions with real-time UI vi
 
 ## ✨ Features
 
-- 🎬 **Session Recording**: Intercepts and logs all Appium requests
+- 🎬 **Session Recording**: Intercepts and logs Appium commands (currently focused on `POST /session/:sessionId/*`)
 - 📸 **Screenshot Capture**: Automatically captures screenshots after actions
 - 🔍 **Element Inspector**: Interactive element inspection with multiple locator strategies
 - 🎯 **Query Tester**: Test locators in real-time on captured screenshots
@@ -22,18 +22,18 @@ A modern, interactive CLI tool that records Appium sessions with real-time UI vi
 
 ### Start Appium Server
 
-Start the Appium server with CORS enabled:
+Start the Appium server (CORS is only needed if you plan to call Appium directly from a browser):
 
 ```bash
 appium --port 4723 --allow-cors
 ```
 
-The `--allow-cors` flag is required for the session recorder to work correctly.
+The recorder proxy itself does not require `--allow-cors` for normal usage.
 
 ### Installation
 
 ```bash
-cd appium-session-recorder
+cd appium-session-recorder # (or your cloned folder name)
 bun install
 ```
 
@@ -45,8 +45,8 @@ bun run cli
 
 The CLI will interactively prompt you for:
 - **Proxy port** (default: 4724)
+- **Proxy host** (default: 127.0.0.1)
 - **Appium server URL** (default: http://127.0.0.1:4723)
-- **Save configuration** option
 
 Alternatively, use command-line arguments:
 
@@ -80,13 +80,13 @@ This project is intended for **local testing and development**. It runs an unaut
 **Current known gaps (will be addressed in future updates):**
 - Missing validation for `sessionId`
 - Missing validation for `appiumUrl`
-- UI hardening for untrusted XML rendering (XSS defense-in-depth)
 - Rate limiting for API endpoints
 - Authentication/authorization (likely optional, since local-by-default is intentional)
 
 **Practical guidance:**
 - Run the recorder on `127.0.0.1` only (default) and avoid port-forwarding/sharing the port.
 - Be cautious with `appium --allow-cors`; treat the recorder + Appium as a local dev surface while running.
+- Page source is untrusted input; XML is rendered as text (not HTML) to mitigate XSS.
 
 ### CLI Options
 
@@ -128,7 +128,7 @@ bun run cli
 ### Timeline
 
 - View all interactions in chronological order
-- Color-coded by HTTP method (POST, GET, DELETE)
+- Color-coded by HTTP method (mostly `POST`)
 - **Action markers** for requests with screenshots
 - Click screenshots to open inspector
 
@@ -192,7 +192,6 @@ For each action:
 
 - **Test Debugging**: Review session history to debug failing tests
 - **Element Discovery**: Find reliable locators for automation
-- **Documentation**: Export session history for documentation
 - **Training**: Show team members how to interact with the app
 - **Test Recording**: Generate test scripts from recorded interactions
 
