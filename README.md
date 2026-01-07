@@ -2,6 +2,8 @@
 
 A modern, interactive CLI tool that records Appium sessions with real-time UI visualization and element inspection. Built with Bun, Solid.js, and Kobalte.
 
+![Workflow Demo](workflow.gif)
+
 ## ✨ Features
 
 - 🎬 **Session Recording**: Intercepts and logs Appium commands (currently focused on `POST /session/:sessionId/*`)
