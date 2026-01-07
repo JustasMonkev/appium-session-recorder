@@ -13,7 +13,7 @@ export function createServer(options: RecorderOptions = {}) {
     const recorder = new InteractionRecorder();
 
     // Parse JSON bodies
-    app.use(express.json({ type: ['application/json', 'application/*+json'], limit: '100mb' }));
+    app.use(express.json({ type: ['application/json', 'application/*+json'], limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
     // Register routes

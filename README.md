@@ -86,24 +86,11 @@ OPTIONS:
   -v, --version              Show version
 ```
 
-### Configuration File
-
-Create a `.appiumrc.json` file in your project directory:
-
-```json
-{
-  "appiumUrl": "http://127.0.0.1:4723",
-  "host": "127.0.0.1",
-  "port": 4724
-}
-```
-
 Configuration priority (highest to lowest):
 1. Command-line arguments
 2. Interactive prompts
-3. `.appiumrc.json` file
-4. Environment variables
-5. Default values
+3. Environment variables
+4. Default values
 
 ### Environment Variables
 
@@ -179,7 +166,6 @@ appium-session-recorder/
 │   └── index.ts             # Main executable
 ├── dist/                    # Build output
 │   └── ui/                  # Compiled frontend
-├── .appiumrc.json.example   # Example config
 ├── package.json
 └── README.md
 ```
@@ -250,17 +236,3 @@ For each action:
                               │  Real-time Updates  │
                               └─────────────────────┘
 ```
-
-## 📝 License
-
-MIT
-
-## 🙏 Credits
-
-Built with:
-- [Bun](https://bun.sh/) - Fast all-in-one JavaScript runtime
-- [Solid.js](https://www.solidjs.com/) - Reactive UI framework
-- [Kobalte](https://kobalte.dev/) - Accessible UI primitives
-- [@clack/prompts](https://github.com/natemoo-re/clack) - Beautiful CLI prompts
-- [Express](https://expressjs.com/) - Web framework
-- [Vite](https://vitejs.dev/) - Build tool

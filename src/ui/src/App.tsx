@@ -1,59 +1,39 @@
-import { type Component, createSignal } from 'solid-js';
+import { type Component, createSignal, createMemo, createEffect } from 'solid-js';
 import { useInteractions } from './hooks/useInteractions';
-import { Controls } from './components/Controls';
-import { Timeline } from './components/Timeline';
-import { Inspector } from './components/Inspector';
-import type { Interaction } from './types';
+import { ActionCarousel } from './components/ActionCarousel';
+import { MainInspector } from './components/MainInspector';
 import './App.css';
 
 const App: Component = () => {
-    const { interactions, clearHistory, refresh } = useInteractions();
-    const [inspectorOpen, setInspectorOpen] = createSignal(false);
-    const [inspectorInteraction, setInspectorInteraction] = createSignal<Interaction | null>(null);
+    const { interactions } = useInteractions();
+    const [currentIndex, setCurrentIndex] = createSignal(0);
 
-    const handleInspect = (interaction: Interaction) => {
-        setInspectorInteraction(interaction);
-        setInspectorOpen(true);
-    };
+    // Filter to only actions (interactions with screenshots)
+    const actions = createMemo(() =>
+        interactions().filter(i => i.screenshot)
+    );
 
-    const handleExport = () => {
-        const data = JSON.stringify(interactions(), null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `appium-session-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
+    // Get the current action
+    const currentAction = createMemo(() => actions()[currentIndex()]);
+
+    // Auto-select the latest action when new ones are added
+    createEffect(() => {
+        const actionsCount = actions().length;
+        if (actionsCount > 0) {
+            setCurrentIndex(actionsCount - 1);
+        }
+    });
 
     return (
         <div class="app">
-            <header class="app-header">
-                <h1 class="app-title">
-                    <span class="app-icon">🎬</span>
-                    Appium Session Recorder
-                </h1>
-            </header>
-
-            <main class="app-main">
-                <Controls
-                    onRefresh={refresh}
-                    onClear={clearHistory}
-                    onExport={handleExport}
-                />
-
-                <Timeline
-                    interactions={interactions()}
-                    onInspect={handleInspect}
-                />
-            </main>
-
-            <Inspector
-                interaction={inspectorInteraction()}
-                open={inspectorOpen()}
-                onClose={() => setInspectorOpen(false)}
+            <ActionCarousel
+                interactions={interactions()}
+                currentIndex={currentIndex()}
+                onNavigate={setCurrentIndex}
             />
+            <main class="app-main">
+                <MainInspector interaction={currentAction()} />
+            </main>
         </div>
     );
 };

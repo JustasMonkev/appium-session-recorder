@@ -1,31 +1,12 @@
 .app {
-    min-height: 100vh;
-    background: var(--color-bg-primary);
-}
-
-.app-header {
-    background: var(--color-bg-secondary);
-    padding: var(--spacing-6) var(--spacing-8);
-    border-bottom: 1px solid var(--color-border);
-    box-shadow: var(--shadow-md);
-}
-
-.app-title {
-    font-size: var(--font-size-2xl);
-    font-weight: var(--font-weight-bold);
-    color: var(--color-text-primary);
+    height: 100vh;
     display: flex;
-    align-items: center;
-    gap: var(--spacing-4);
-    margin: 0;
-}
-
-.app-icon {
-    font-size: var(--font-size-3xl);
+    flex-direction: column;
+    background: var(--color-bg-primary);
+    overflow: hidden;
 }
 
 .app-main {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: var(--spacing-8);
+    flex: 1;
+    overflow: hidden;
 }
