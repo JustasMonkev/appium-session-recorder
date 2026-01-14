@@ -1,46 +1,8 @@
 import * as p from '@clack/prompts';
 import { runPrompts } from './prompts';
 import { startServer } from '../server';
+import { parseArgs } from './arg-parser';
 import type { RecorderOptions } from '../server';
-
-function parseArgs(): Partial<RecorderOptions> & { help?: boolean; version?: boolean } {
-    const args = process.argv.slice(2);
-    const parsed: any = {};
-
-    for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-
-        if (arg === '--help' || arg === '-h') {
-            parsed.help = true;
-        } else if (arg === '--version' || arg === '-v') {
-            parsed.version = true;
-        } else if (arg === '--port' || arg === '-p') {
-            if (i + 1 >= args.length) {
-                console.error('Error: --port requires a value');
-                process.exit(1);
-            }
-            parsed.port = Number(args[++i]);
-            if (isNaN(parsed.port)) {
-                console.error('Error: --port must be a number');
-                process.exit(1);
-            }
-        } else if (arg === '--appium-url' || arg === '-u') {
-            if (i + 1 >= args.length) {
-                console.error('Error: --appium-url requires a value');
-                process.exit(1);
-            }
-            parsed.appiumUrl = args[++i];
-        } else if (arg === '--host') {
-            if (i + 1 >= args.length) {
-                console.error('Error: --host requires a value');
-                process.exit(1);
-            }
-            parsed.host = args[++i];
-        }
-    }
-
-    return parsed;
-}
 
 function showHelp() {
     console.log(`
@@ -74,7 +36,14 @@ function showVersion() {
 }
 
 export async function runCLI() {
-    const args = parseArgs();
+    const result = parseArgs(process.argv);
+
+    if (!result.success) {
+        console.error(`Error: ${result.error}`);
+        process.exit(1);
+    }
+
+    const args = result.args;
 
     if (args.help) {
         showHelp();
