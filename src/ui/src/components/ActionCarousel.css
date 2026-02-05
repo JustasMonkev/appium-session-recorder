@@ -2,7 +2,7 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-4);
-    padding: var(--spacing-4) var(--spacing-6);
+    padding: var(--spacing-3) var(--spacing-6);
     background: var(--color-bg-secondary);
     border-bottom: 1px solid var(--color-border);
 }
@@ -15,18 +15,19 @@
     gap: var(--spacing-3);
     color: var(--color-text-tertiary);
     font-size: var(--font-size-sm);
+    padding: var(--spacing-2) 0;
 }
 
 .carousel-empty-icon {
-    font-size: var(--font-size-xl);
+    font-size: var(--font-size-lg);
 }
 
 .carousel-btn {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-primary);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
     border: 1px solid var(--color-border);
-    padding: var(--spacing-3) var(--spacing-5);
-    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-lg);
     cursor: pointer;
     font-weight: var(--font-weight-medium);
     font-size: var(--font-size-sm);
@@ -41,7 +42,7 @@
 }
 
 .carousel-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
 }
 
@@ -50,13 +51,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--spacing-2);
+    gap: var(--spacing-1);
 }
 
 .carousel-counter {
     font-size: var(--font-size-xs);
     color: var(--color-text-tertiary);
     font-weight: var(--font-weight-medium);
+    letter-spacing: 0.02em;
 }
 
 .carousel-details {
@@ -68,31 +70,32 @@
 }
 
 .carousel-id {
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
     color: var(--color-text-tertiary);
     font-weight: var(--font-weight-medium);
 }
 
 .carousel-method {
     font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-bold);
-    padding: var(--spacing-1) var(--spacing-2);
+    font-weight: var(--font-weight-semibold);
+    padding: 2px var(--spacing-2);
     border-radius: var(--radius-sm);
     text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .carousel-method.POST {
-    background: rgba(46, 213, 115, 0.2);
+    background: #E8F5EE;
     color: var(--color-accent-success);
 }
 
 .carousel-method.GET {
-    background: rgba(255, 159, 67, 0.2);
+    background: #FFF3E0;
     color: var(--color-accent-warning);
 }
 
 .carousel-method.DELETE {
-    background: rgba(255, 107, 107, 0.2);
+    background: #FDECEB;
     color: var(--color-accent-error);
 }
 
