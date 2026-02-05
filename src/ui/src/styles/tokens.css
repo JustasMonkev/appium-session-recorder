@@ -1,38 +1,39 @@
 :root {
-  /* Colors - Dark theme with vibrant accents */
-  --color-bg-primary: hsl(240, 25%, 10%);
-  --color-bg-secondary: hsl(235, 28%, 15%);
-  --color-bg-tertiary: hsl(235, 20%, 20%);
-  --color-bg-elevated: hsl(235, 25%, 12%);
-  
-  --color-accent-primary: hsl(187, 100%, 50%);
-  --color-accent-secondary: hsl(271, 76%, 53%);
-  --color-accent-success: hsl(142, 71%, 45%);
-  --color-accent-warning: hsl(35, 100%, 65%);
-  --color-accent-error: hsl(348, 83%, 47%);
-  
-  --color-text-primary: hsl(0, 0%, 95%);
-  --color-text-secondary: hsl(0, 0%, 70%);
-  --color-text-tertiary: hsl(0, 0%, 50%);
-  
-  --color-border: hsl(235, 20%, 25%);
-  --color-border-hover: hsl(187, 100%, 50%);
-  
+  /* Colors - Claude-inspired warm light theme */
+  --color-bg-primary: #F9F7F3;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-tertiary: #F0EDE6;
+  --color-bg-elevated: #FFFFFF;
+
+  --color-accent-primary: #C4682A;
+  --color-accent-secondary: #B05C26;
+  --color-accent-success: #2D7D4F;
+  --color-accent-warning: #B8862E;
+  --color-accent-error: #C4453A;
+
+  --color-text-primary: #1B1B18;
+  --color-text-secondary: #6B6B64;
+  --color-text-tertiary: #9B9B94;
+
+  --color-border: #E3DFD7;
+  --color-border-hover: #C4682A;
+
   /* Typography */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.9375rem;
+  --font-size-lg: 1.0625rem;
   --font-size-xl: 1.25rem;
   --font-size-2xl: 1.5rem;
   --font-size-3xl: 2rem;
-  
+
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
-  
+
   /* Spacing */
   --spacing-1: 0.25rem;
   --spacing-2: 0.5rem;
@@ -43,25 +44,26 @@
   --spacing-8: 2rem;
   --spacing-10: 2.5rem;
   --spacing-12: 3rem;
-  
+
   /* Border radius */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
   --radius-full: 9999px;
-  
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.3);
-  
+
+  /* Shadows - soft and subtle */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 28px -6px rgba(0, 0, 0, 0.08), 0 4px 12px -4px rgba(0, 0, 0, 0.04);
+
   /* Transitions */
   --transition-fast: 150ms ease;
-  --transition-base: 250ms ease;
-  --transition-slow: 350ms ease;
-  
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+
   /* Z-index */
   --z-dropdown: 1000;
   --z-sticky: 1020;
@@ -90,21 +92,21 @@ body {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-bg-tertiary);
+  background: var(--color-border);
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border);
+  background: var(--color-text-tertiary);
 }
 
 /* Utility classes */
