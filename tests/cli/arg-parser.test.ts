@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseArgs, validatePort, validateUrl, validateHost } from '../../src/cli/arg-parser';
+import { parseArgs, parseCliInput, validatePort, validateUrl, validateHost } from '../../src/cli/arg-parser';
 
 describe('parseArgs', () => {
     // Helper to simulate argv (node, script, ...args)
@@ -322,5 +322,76 @@ describe('validateHost', () => {
     it('should accept hostnames', () => {
         expect(validateHost('my-host')).toBeUndefined();
         expect(validateHost('server.local')).toBeUndefined();
+    });
+});
+
+describe('parseCliInput', () => {
+    const createArgv = (...args: string[]) => ['node', 'script.js', ...args];
+
+    it('keeps no-subcommand invocation in legacy mode', () => {
+        const result = parseCliInput(createArgv());
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.value.mode).toBe('legacy');
+        }
+    });
+
+    it('routes proxy start command mode', () => {
+        const result = parseCliInput(createArgv('proxy', 'start', '--port', '4724'));
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.value.mode).toBe('command');
+            expect(result.value.route?.group).toBe('proxy');
+            expect(result.value.route?.command).toBe('start');
+        }
+    });
+
+    it('supports global output flags', () => {
+        const result = parseCliInput(createArgv(
+            'session',
+            'delete',
+            '--session-id',
+            'abc',
+            '--appium-url',
+            'http://127.0.0.1:4723',
+            '--pretty',
+            '--output',
+            'tmp/out.json',
+        ));
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.value.global.pretty).toBe(true);
+            expect(result.value.global.output).toBe('tmp/out.json');
+        }
+    });
+
+    it('rejects --pretty in legacy mode', () => {
+        const result = parseCliInput(createArgv('--pretty', '--port', '4724'));
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe('--pretty and --output are only supported with <group> <command> mode');
+        }
+    });
+
+    it('rejects --output in legacy mode', () => {
+        const result = parseCliInput(createArgv('--output', 'out.json', '--appium-url', 'http://127.0.0.1:4723'));
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe('--pretty and --output are only supported with <group> <command> mode');
+        }
+    });
+
+    it('rejects mixed --help with command-mode global flags', () => {
+        const result = parseCliInput(createArgv('--help', '--pretty'));
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.error).toBe('--pretty and --output are only supported with <group> <command> mode');
+        }
     });
 });

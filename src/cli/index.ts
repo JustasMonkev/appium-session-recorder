@@ -1,7 +1,10 @@
 import * as p from '@clack/prompts';
 import { runPrompts } from './prompts';
 import { startServer } from '../server';
-import { parseArgs } from './arg-parser';
+import { parseArgs, parseCliInput } from './arg-parser';
+import { dispatchCommand } from './commands';
+import { emitResponse, errorResponse, successResponse } from './response';
+import { AppiumCommandError } from '../core/appium/client';
 import type { RecorderOptions } from '../server';
 
 function showHelp() {
@@ -9,34 +12,42 @@ function showHelp() {
 🎬 Appium Session Recorder
 
 USAGE:
-  bun run cli [options]
+  bun run cli [legacy-options]
+  bun run cli <group> <command> [flags]
 
-OPTIONS:
+LEGACY OPTIONS:
   -p, --port <number>        Proxy server port (default: 4724)
   -u, --appium-url <url>     Appium server URL (default: http://127.0.0.1:4723)
   --host <host>              Proxy server host (default: 127.0.0.1)
   -h, --help                 Show this help message
   -v, --version              Show version
 
-EXAMPLES:
-  bun run cli
-  bun run cli --port 8080 --appium-url http://192.168.1.100:4723
+GLOBAL COMMAND FLAGS:
+  --pretty                   Pretty-print JSON output
+  --output <path>            Write command JSON output to file
+  (supported only with <group> <command> mode)
 
-CONFIGURATION:
-  Configuration is resolved in this order (highest to lowest priority):
-  1. Command-line arguments
-  2. Interactive prompts
-  3. Environment variables (PROXY_PORT, APPIUM_URL, PROXY_HOST)
-  4. Default values
+COMMAND GROUPS:
+  proxy start                Start proxy server (JSON-first output)
+  session create             Create Appium session
+  session delete             Delete Appium session
+  screen snapshot            Capture screenshot/source and parsed metadata
+  screen elements            List parsed elements
+  selectors best             Return top ranked selectors for an element
+  drive tap                  Tap element by selector
+  drive type                 Type text into element by selector
+  drive back                 Navigate back
+  drive swipe                Perform swipe gesture
+  drive scroll               Scroll in a direction (up/down/left/right)
 `);
 }
 
 function showVersion() {
-    console.log('Appium Session Recorder v2.0.0');
+    console.log('Appium Session Recorder v3.0.0');
 }
 
-export async function runCLI() {
-    const result = parseArgs(process.argv);
+async function runLegacyCLI(argv: string[]): Promise<void> {
+    const result = parseArgs(argv);
 
     if (!result.success) {
         console.error(`Error: ${result.error}`);
@@ -58,7 +69,11 @@ export async function runCLI() {
     // Determine if we need to run interactive prompts
     const hasRequiredArgs = args.port !== undefined || args.appiumUrl !== undefined;
 
-    let promptConfig: Partial<RecorderOptions> = {};
+    let promptConfig: Partial<RecorderOptions> = {
+        port: args.port,
+        appiumUrl: args.appiumUrl,
+        host: args.host,
+    };
 
     if (!hasRequiredArgs) {
         // Run interactive prompts
@@ -96,4 +111,48 @@ export async function runCLI() {
         p.outro('👋 Shutting down...');
         process.exit(0);
     });
+}
+
+export async function runCLI(): Promise<void> {
+    const parsedInput = parseCliInput(process.argv);
+
+    if (!parsedInput.success) {
+        const response = errorResponse('cli.parse', 'CLI_PARSE_ERROR', parsedInput.error);
+        await emitResponse(response, { pretty: true });
+        process.exit(1);
+    }
+
+    const cliInput = parsedInput.value;
+
+    if (cliInput.mode === 'legacy') {
+        await runLegacyCLI(cliInput.legacyArgv ?? process.argv);
+        return;
+    }
+
+    const route = cliInput.route!;
+    const commandName = `${route.group}.${route.command}`;
+
+    try {
+        const execution = await dispatchCommand(route.group, route.command, route.args);
+        const response = successResponse(execution.command, execution.result);
+        await emitResponse(response, cliInput.global);
+    } catch (error) {
+        if (error instanceof AppiumCommandError) {
+            const response = errorResponse(commandName, error.code, error.message, {
+                status: error.status,
+                details: error.details,
+            });
+            await emitResponse(response, cliInput.global);
+            process.exit(1);
+            return;
+        }
+
+        const response = errorResponse(
+            commandName,
+            'COMMAND_EXECUTION_ERROR',
+            error instanceof Error ? error.message : 'Unknown error',
+        );
+        await emitResponse(response, cliInput.global);
+        process.exit(1);
+    }
 }

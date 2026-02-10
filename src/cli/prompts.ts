@@ -19,7 +19,7 @@ export async function runPrompts(): Promise<Partial<RecorderOptions>> {
                 placeholder: defaults.port,
                 defaultValue: defaults.port,
                 validate: (value) => {
-                    if (value.trim().length === 0) return;
+                    if (!value || value.trim().length === 0) return;
                     const num = Number(value);
                     if (isNaN(num) || num < 1 || num > 65535) {
                         return 'Please enter a valid port number (1-65535)';
@@ -31,10 +31,7 @@ export async function runPrompts(): Promise<Partial<RecorderOptions>> {
                 placeholder: defaults.host,
                 defaultValue: defaults.host,
                 validate: (value) => {
-                    if (value.trim().length === 0) return;
-                    if (!value || value.trim().length === 0) {
-                        return 'Please enter a valid host';
-                    }
+                    if (!value || value.trim().length === 0) return undefined;
                 },
             }),
             appiumUrl: () => p.text({
@@ -42,7 +39,7 @@ export async function runPrompts(): Promise<Partial<RecorderOptions>> {
                 placeholder: defaults.appiumUrl,
                 defaultValue: defaults.appiumUrl,
                 validate: (value) => {
-                    if (value.trim().length === 0) return;
+                    if (!value || value.trim().length === 0) return;
                     try {
                         new URL(value);
                     } catch {
