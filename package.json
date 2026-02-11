@@ -1,10 +1,10 @@
 {
   "name": "appium-session-recorder",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Interactive Appium session recorder with modern UI",
   "type": "module",
   "bin": {
-    "appium-recorder": "./src/index.ts"
+    "appium-recorder": "./dist/index.js"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -25,6 +25,7 @@
     "dev": "bun run src/index.ts",
     "build": "bun run build:ui && bun build src/index.ts --outdir dist --target bun",
     "build:ui": "cd src/ui && bun run build",
+    "prepack": "bun run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest run --config vitest.ui.config.ts",
@@ -58,5 +59,11 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JustasMonkev/appium-session-recorder"
-  }
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ]
 }
