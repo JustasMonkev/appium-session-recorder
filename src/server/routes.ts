@@ -1,4 +1,5 @@
 import express, { Router } from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { InteractionRecorder } from './interaction-recorder';
@@ -6,17 +7,27 @@ import type { InteractionRecorder } from './interaction-recorder';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Resolve UI dist path: works from both source (src/server/) and bundle (dist/)
+function resolveUiDir(): string {
+    const candidates = [
+        path.join(__dirname, '../../dist/ui'),  // dev: running from src/server/
+        path.join(__dirname, 'ui'),              // prod: running from dist/
+    ];
+    return candidates.find(p => fs.existsSync(p)) || candidates[0];
+}
+
+const uiDir = resolveUiDir();
+
 export function createRoutes(recorder: InteractionRecorder) {
     const router = Router();
 
     // Serve the UI
     router.get('/_recorder', (_req, res) => {
-        const uiPath = path.join(__dirname, '../../dist/ui/index.html');
-        res.sendFile(uiPath);
+        res.sendFile(path.join(uiDir, 'index.html'));
     });
 
     // Serve static assets using express.static for better performance and caching
-    router.use('/_recorder/assets', express.static(path.join(__dirname, '../../dist/ui/assets')));
+    router.use('/_recorder/assets', express.static(path.join(uiDir, 'assets')));
 
     // API: Get history
     router.get('/_recorder/api/history', (_req, res) => {
