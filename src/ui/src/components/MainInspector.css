@@ -247,6 +247,32 @@
     overflow: auto;
 }
 
+/* Screenshot Overlay */
+.screenshot-overlay-container {
+    position: relative;
+    display: inline-block;
+    cursor: crosshair;
+}
+
+.screenshot-overlay-container .screenshot-image {
+    display: block;
+    max-height: 100%;
+    max-width: 350px;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    object-fit: contain;
+    border: 1px solid var(--color-border);
+}
+
+.screenshot-overlay-rects {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
 .screenshot-image {
     max-height: 100%;
     max-width: 350px;
@@ -254,6 +280,111 @@
     box-shadow: var(--shadow-md);
     object-fit: contain;
     border: 1px solid var(--color-border);
+}
+
+/* Element Tree Section */
+.element-tree-section {
+    width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.element-tree {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.element-tree .section-title {
+    flex-shrink: 0;
+    margin-bottom: var(--spacing-3);
+}
+
+.element-tree-list {
+    flex: 1;
+    overflow: auto;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-2) 0;
+}
+
+.element-tree-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    padding: var(--spacing-1) var(--spacing-2);
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    font-family: var(--font-mono);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    transition: background var(--transition-fast);
+}
+
+.element-tree-row:hover {
+    background: var(--color-bg-tertiary);
+}
+
+.element-tree-row--selected {
+    background: rgba(196, 104, 42, 0.1);
+    color: var(--color-accent-primary);
+}
+
+.element-tree-row--selected:hover {
+    background: rgba(196, 104, 42, 0.15);
+}
+
+.element-tree-row--no-children {
+    padding-left: calc(var(--spacing-2) + 18px);
+}
+
+.element-tree-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 8px;
+    color: var(--color-text-tertiary);
+    transition: transform var(--transition-fast);
+    transform: rotate(90deg);
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.element-tree-toggle--collapsed {
+    transform: rotate(0deg);
+}
+
+.element-tree-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.element-tree-list::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.element-tree-list::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: var(--radius-sm);
+}
+
+.element-tree-list::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+.element-tree-list::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-tertiary);
 }
 
 /* XML Section */

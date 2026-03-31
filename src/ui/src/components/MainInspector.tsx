@@ -3,6 +3,8 @@ import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
 import type { ParsedElement, Locator } from '../types';
+import { ScreenshotOverlay } from './ScreenshotOverlay';
+import { ElementTree } from './ElementTree';
 import './MainInspector.css';
 
 type MainInspectorProps = {
@@ -11,6 +13,7 @@ type MainInspectorProps = {
 
 export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [selectedElement, setSelectedElement] = createSignal<ParsedElement | null>(null);
+    const [hoveredElement, setHoveredElement] = createSignal<ParsedElement | null>(null);
     const [queryStrategy, setQueryStrategy] = createSignal('accessibility id');
     const [queryValue, setQueryValue] = createSignal('');
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
@@ -22,6 +25,7 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
     createEffect(() => {
         if (props.interaction) {
             setSelectedElement(null);
+            setHoveredElement(null);
             setQueryValue('');
             setFoundElements([]);
         }
@@ -163,6 +167,14 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         el.textContent = formatXml(props.interaction?.source || '');
     });
 
+    const handleElementSelect = (element: ParsedElement) => {
+        setSelectedElement(element);
+    };
+
+    const handleElementHover = (element: ParsedElement | null) => {
+        setHoveredElement(element);
+    };
+
     return (
         <div class="main-inspector">
             <Show
@@ -271,18 +283,34 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     </Show>
                 </div>
 
-                {/* Content Area: Screenshot Left, XML Right */}
+                {/* Content Area: Screenshot Left, Element Tree Middle, XML Right */}
                 <div class="content-area">
-                    {/* Screenshot Section */}
+                    {/* Screenshot Section with Overlay */}
                     <div class="screenshot-section">
                         <Show when={props.interaction!.screenshot}>
-                            <img
-                                src={`data:image/png;base64,${props.interaction!.screenshot}`}
-                                alt="Screenshot"
-                                class="screenshot-image"
+                            <ScreenshotOverlay
+                                screenshot={props.interaction!.screenshot!}
+                                elements={parsedElements()}
+                                selectedElement={selectedElement()}
+                                hoveredElement={hoveredElement()}
+                                matchedElements={foundElements()}
+                                onElementSelect={handleElementSelect}
+                                onElementHover={handleElementHover}
                             />
                         </Show>
                     </div>
+
+                    {/* Element Tree Section */}
+                    <Show when={props.interaction!.source}>
+                        <div class="element-tree-section">
+                            <ElementTree
+                                elements={parsedElements()}
+                                selectedElement={selectedElement()}
+                                onElementSelect={handleElementSelect}
+                                onElementHover={handleElementHover}
+                            />
+                        </div>
+                    </Show>
 
 	                    {/* XML Source Section */}
 	                    <div class="xml-section">
