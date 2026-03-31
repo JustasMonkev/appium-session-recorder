@@ -1,13 +1,21 @@
-import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup } from 'solid-js';
+import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup, createMemo } from 'solid-js';
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
+import { api } from '../services/api';
+import { DiffPanel } from './DiffPanel';
+import { SelectorStability } from './SelectorStability';
 import type { ParsedElement, Locator } from '../types';
 import './MainInspector.css';
 
 type MainInspectorProps = {
     interaction: Interaction | null;
+    previousInteraction?: Interaction;
+    allActions?: Interaction[];
+    currentIndex?: number;
 };
+
+const REPLAYABLE_ACTIONS = ['tap', 'type', 'clear', 'back', 'swipe', 'scroll'];
 
 export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [selectedElement, setSelectedElement] = createSignal<ParsedElement | null>(null);
@@ -17,6 +25,9 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [copiedText, setCopiedText] = createSignal<string | null>(null);
     const [queryError, setQueryError] = createSignal<string | null>(null);
     const [xmlPreRef, setXmlPreRef] = createSignal<HTMLPreElement | undefined>(undefined);
+    const [activeTab, setActiveTab] = createSignal<'inspect' | 'diff'>('inspect');
+    const [replayStatus, setReplayStatus] = createSignal<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [replayError, setReplayError] = createSignal<string | null>(null);
 
     // Reset state when interaction changes
     createEffect(() => {
@@ -24,6 +35,8 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
             setSelectedElement(null);
             setQueryValue('');
             setFoundElements([]);
+            setReplayStatus('idle');
+            setReplayError(null);
         }
     });
 
@@ -31,6 +44,19 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         if (!props.interaction?.source) return [];
         return parseXmlSource(props.interaction.source);
     };
+
+    const canReplay = createMemo(() => {
+        const action = props.interaction;
+        if (!action) return false;
+        return action.actionKind != null && REPLAYABLE_ACTIONS.includes(action.actionKind);
+    });
+
+    const futureActions = createMemo(() => {
+        const all = props.allActions || [];
+        const idx = props.currentIndex ?? -1;
+        if (idx < 0 || idx >= all.length) return [];
+        return all.slice(idx + 1);
+    });
 
     const runQuery = () => {
         const strategy = queryStrategy();
@@ -93,7 +119,7 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     return false;
                 });
                 break;
-            case '-ios class chain':
+            case '-ios class chain': {
                 const classChainMatch = value.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
                 if (classChainMatch) {
                     const targetType = classChainMatch[1];
@@ -109,6 +135,7 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     });
                 }
                 break;
+            }
         }
 
         setFoundElements(found);
@@ -130,6 +157,28 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
     const locators = (): Locator[] => {
         const el = selectedElement();
         return el ? generateLocators(el) : [];
+    };
+
+    const handleReplay = async () => {
+        const action = props.interaction;
+        if (!action) return;
+
+        setReplayStatus('loading');
+        setReplayError(null);
+
+        try {
+            const result = await api.replayInteraction(action.id);
+            if (result.ok) {
+                setReplayStatus('success');
+                setTimeout(() => setReplayStatus('idle'), 2000);
+            } else {
+                setReplayStatus('error');
+                setReplayError(result.error || 'Replay failed');
+            }
+        } catch (err) {
+            setReplayStatus('error');
+            setReplayError(err instanceof Error ? err.message : 'Replay request failed');
+        }
     };
 
     const formatXml = (xml: string) => {
@@ -176,113 +225,168 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     </div>
                 }
             >
-                {/* Query Tester Section */}
-                <div class="query-section">
-                    <h3 class="section-title">Query Tester</h3>
-                    <div class="query-row">
-                        <select
-                            value={queryStrategy()}
-                            onChange={(e) => setQueryStrategy(e.currentTarget.value)}
-                            class="query-select"
+                {/* Tab Bar */}
+                <div class="inspector-tabs">
+                    <button
+                        class="inspector-tab"
+                        classList={{ active: activeTab() === 'inspect' }}
+                        onClick={() => setActiveTab('inspect')}
+                    >
+                        Inspect
+                    </button>
+                    <button
+                        class="inspector-tab"
+                        classList={{ active: activeTab() === 'diff' }}
+                        onClick={() => setActiveTab('diff')}
+                    >
+                        Diff
+                    </button>
+
+                    {/* Replay Button */}
+                    <Show when={canReplay()}>
+                        <div class="inspector-tab-spacer" />
+                        <button
+                            class="replay-btn"
+                            classList={{
+                                'replay-loading': replayStatus() === 'loading',
+                                'replay-success': replayStatus() === 'success',
+                                'replay-error': replayStatus() === 'error',
+                            }}
+                            onClick={handleReplay}
+                            disabled={replayStatus() === 'loading'}
                         >
-                            <option value="accessibility id">accessibility id</option>
-                            <option value="xpath">xpath</option>
-                            <option value="class name">class name</option>
-                            <option value="-ios predicate string">-ios predicate string</option>
-                            <option value="-ios class chain">-ios class chain</option>
-                        </select>
-                        <input
-                            type="text"
-                            value={queryValue()}
-                            onInput={(e) => setQueryValue(e.currentTarget.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && runQuery()}
-                            placeholder="Enter locator value..."
-                            class="query-input"
-                        />
-                        <button onClick={runQuery} class="query-btn">
-                            Find
+                            {replayStatus() === 'loading' ? 'Replaying...'
+                                : replayStatus() === 'success' ? 'Replayed!'
+                                : replayStatus() === 'error' ? 'Failed'
+                                : `Replay ${props.interaction!.actionKind}`}
                         </button>
-                    </div>
-
-                    <Show when={foundElements().length > 0}>
-                        <div class="query-result success">
-                            Found {foundElements().length} element(s)
-                        </div>
-                    </Show>
-
-                    <Show when={queryError()}>
-                        <div class="query-result error">
-                            <span class="error-icon">⚠️</span>
-                            <span>{queryError()}</span>
-                            <button class="error-dismiss" onClick={() => setQueryError(null)}>✕</button>
-                        </div>
-                    </Show>
-
-                    {/* Element Details */}
-                    <Show when={selectedElement()}>
-                        <div class="element-panel">
-                            <div class="element-details">
-                                <div class="element-attr">
-                                    <span class="attr-name">Type:</span>
-                                    <span class="attr-value">{selectedElement()!.type}</span>
-                                </div>
-                                <Show when={selectedElement()!.name}>
-                                    <div class="element-attr">
-                                        <span class="attr-name">Name:</span>
-                                        <span class="attr-value">{selectedElement()!.name}</span>
-                                    </div>
-                                </Show>
-                                <Show when={selectedElement()!.label}>
-                                    <div class="element-attr">
-                                        <span class="attr-name">Label:</span>
-                                        <span class="attr-value">{selectedElement()!.label}</span>
-                                    </div>
-                                </Show>
-                                <div class="element-attr">
-                                    <span class="attr-name">Bounds:</span>
-                                    <span class="attr-value">
-                                        x={selectedElement()!.x}, y={selectedElement()!.y},
-                                        w={selectedElement()!.width}, h={selectedElement()!.height}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div class="locators-section">
-                                <h4>Locators (click to copy)</h4>
-                                <div class="locators-list">
-                                    <For each={locators()}>
-                                        {(locator) => (
-                                            <div
-                                                class="locator-row"
-                                                classList={{ copied: copiedText() === locator.value }}
-                                                onClick={() => copyText(locator.value)}
-                                            >
-                                                <span class="locator-strategy">{locator.strategy}</span>
-                                                <span class="locator-value">{locator.value}</span>
-                                                <Show when={copiedText() === locator.value}>
-                                                    <span class="copied-badge">Copied!</span>
-                                                </Show>
-                                            </div>
-                                        )}
-                                    </For>
-                                </div>
-                            </div>
-                        </div>
                     </Show>
                 </div>
 
-                {/* Content Area: Screenshot Left, XML Right */}
-                <div class="content-area">
-                    {/* Screenshot Section */}
-                    <div class="screenshot-section">
-                        <Show when={props.interaction!.screenshot}>
-                            <img
-                                src={`data:image/png;base64,${props.interaction!.screenshot}`}
-                                alt="Screenshot"
-                                class="screenshot-image"
+                {/* Replay Error */}
+                <Show when={replayError()}>
+                    <div class="replay-error-msg">
+                        {replayError()}
+                        <button class="error-dismiss" onClick={() => setReplayError(null)}>✕</button>
+                    </div>
+                </Show>
+
+                {/* Inspect Tab */}
+                <Show when={activeTab() === 'inspect'}>
+                    {/* Query Tester Section */}
+                    <div class="query-section">
+                        <h3 class="section-title">Query Tester</h3>
+                        <div class="query-row">
+                            <select
+                                value={queryStrategy()}
+                                onChange={(e) => setQueryStrategy(e.currentTarget.value)}
+                                class="query-select"
+                            >
+                                <option value="accessibility id">accessibility id</option>
+                                <option value="xpath">xpath</option>
+                                <option value="class name">class name</option>
+                                <option value="-ios predicate string">-ios predicate string</option>
+                                <option value="-ios class chain">-ios class chain</option>
+                            </select>
+                            <input
+                                type="text"
+                                value={queryValue()}
+                                onInput={(e) => setQueryValue(e.currentTarget.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && runQuery()}
+                                placeholder="Enter locator value..."
+                                class="query-input"
                             />
+                            <button onClick={runQuery} class="query-btn">
+                                Find
+                            </button>
+                        </div>
+
+                        <Show when={foundElements().length > 0}>
+                            <div class="query-result success">
+                                Found {foundElements().length} element(s)
+                            </div>
+                        </Show>
+
+                        <Show when={queryError()}>
+                            <div class="query-result error">
+                                <span class="error-icon">⚠️</span>
+                                <span>{queryError()}</span>
+                                <button class="error-dismiss" onClick={() => setQueryError(null)}>✕</button>
+                            </div>
+                        </Show>
+
+                        {/* Element Details */}
+                        <Show when={selectedElement()}>
+                            <div class="element-panel">
+                                <div class="element-details">
+                                    <div class="element-attr">
+                                        <span class="attr-name">Type:</span>
+                                        <span class="attr-value">{selectedElement()!.type}</span>
+                                    </div>
+                                    <Show when={selectedElement()!.name}>
+                                        <div class="element-attr">
+                                            <span class="attr-name">Name:</span>
+                                            <span class="attr-value">{selectedElement()!.name}</span>
+                                        </div>
+                                    </Show>
+                                    <Show when={selectedElement()!.label}>
+                                        <div class="element-attr">
+                                            <span class="attr-name">Label:</span>
+                                            <span class="attr-value">{selectedElement()!.label}</span>
+                                        </div>
+                                    </Show>
+                                    <div class="element-attr">
+                                        <span class="attr-name">Bounds:</span>
+                                        <span class="attr-value">
+                                            x={selectedElement()!.x}, y={selectedElement()!.y},
+                                            w={selectedElement()!.width}, h={selectedElement()!.height}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="locators-section">
+                                    <h4>Locators (click to copy)</h4>
+                                    <div class="locators-list">
+                                        <For each={locators()}>
+                                            {(locator) => (
+                                                <div
+                                                    class="locator-row"
+                                                    classList={{ copied: copiedText() === locator.value }}
+                                                    onClick={() => copyText(locator.value)}
+                                                >
+                                                    <span class="locator-strategy">{locator.strategy}</span>
+                                                    <span class="locator-value">{locator.value}</span>
+                                                    <Show when={copiedText() === locator.value}>
+                                                        <span class="copied-badge">Copied!</span>
+                                                    </Show>
+                                                </div>
+                                            )}
+                                        </For>
+                                    </div>
+
+                                    {/* Selector Stability */}
+                                    <SelectorStability
+                                        selectedElement={selectedElement()}
+                                        locators={locators()}
+                                        futureActions={futureActions()}
+                                    />
+                                </div>
+                            </div>
                         </Show>
                     </div>
+
+                    {/* Content Area: Screenshot Left, XML Right */}
+                    <div class="content-area">
+                        {/* Screenshot Section */}
+                        <div class="screenshot-section">
+                            <Show when={props.interaction!.screenshot}>
+                                <img
+                                    src={`data:image/png;base64,${props.interaction!.screenshot}`}
+                                    alt="Screenshot"
+                                    class="screenshot-image"
+                                />
+                            </Show>
+                        </div>
 
 	                    {/* XML Source Section */}
 	                    <div class="xml-section">
@@ -298,7 +402,16 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
 	                        />
 	                    </div>
 	                </div>
-	            </Show>
-	        </div>
-	    );
+                </Show>
+
+                {/* Diff Tab */}
+                <Show when={activeTab() === 'diff'}>
+                    <DiffPanel
+                        current={props.interaction!}
+                        previous={props.previousInteraction}
+                    />
+                </Show>
+	        </Show>
+	    </div>
+    );
 };

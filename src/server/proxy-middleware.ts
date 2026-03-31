@@ -1,8 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
-import type { Interaction } from './types';
+import type { ActionKind, Interaction } from './types';
 import { AppiumClient } from './appium-client';
 import { InteractionRecorder } from './interaction-recorder';
+
+function classifyAction(method: string, path: string): ActionKind {
+    if (/\/element\/[^/]+\/click$/.test(path)) return 'tap';
+    if (/\/element\/[^/]+\/value$/.test(path)) return 'type';
+    if (/\/element\/[^/]+\/clear$/.test(path)) return 'clear';
+    if (/\/back$/.test(path)) return 'back';
+    if (/\/touch\/perform$/.test(path)) return 'swipe';
+    if (/\/actions$/.test(path) && method === 'POST') return 'swipe';
+    if (/\/element$/.test(path) || /\/elements$/.test(path)) return 'find';
+    return 'unknown';
+}
 
 export function createSessionMiddleware(
     recorder: InteractionRecorder,
@@ -17,12 +28,15 @@ export function createSessionMiddleware(
         }
 
         const isAction = recorder.isActionEndpoint(req.method, req.path);
+        const actionKind = classifyAction(req.method, req.path);
 
         // Create interaction record
         const interactionData: Omit<Interaction, 'id' | 'timestamp'> = {
             method: req.method,
             path: req.originalUrl,
             body: req.body && Object.keys(req.body).length > 0 ? req.body : undefined,
+            sessionId,
+            actionKind,
         };
 
         // Extract element info for find operations
@@ -35,7 +49,7 @@ export function createSessionMiddleware(
 
         const interaction = recorder.recordInteraction(interactionData);
 
-        console.log(`[${interaction.id}] ${req.method} ${req.originalUrl}`);
+        console.log(`[${interaction.id}] ${req.method} ${req.originalUrl} (${actionKind})`);
         if (interaction.body) {
             console.log('Body:', JSON.stringify(interaction.body, null, 2));
         }

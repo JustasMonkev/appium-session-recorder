@@ -9,6 +9,16 @@ export type ElementInfo = {
     value: string;
 };
 
+export type ActionKind =
+    | 'tap'
+    | 'type'
+    | 'clear'
+    | 'back'
+    | 'swipe'
+    | 'scroll'
+    | 'find'
+    | 'unknown';
+
 export type Interaction = {
     id: number;
     timestamp: string;
@@ -18,6 +28,25 @@ export type Interaction = {
     screenshot?: string;  // base64
     source?: string;      // XML
     elementInfo?: ElementInfo;
+    sessionId?: string;
+    actionKind?: ActionKind;
+};
+
+export type ReplayRequest = {
+    sessionId: string;
+    selector?: { using: string; value: string };
+    text?: string;
+    direction?: 'up' | 'down' | 'left' | 'right';
+    from?: { x: number; y: number };
+    to?: { x: number; y: number };
+    durationMs?: number;
+};
+
+export type ReplayResult = {
+    ok: boolean;
+    interactionId: number;
+    actionKind: ActionKind;
+    error?: string;
 };
 
 export type AppiumResponse = {

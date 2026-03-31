@@ -30,6 +30,88 @@
     font-size: var(--font-size-base);
 }
 
+/* Tab Bar */
+.inspector-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
+.inspector-tab {
+    background: transparent;
+    border: none;
+    padding: var(--spacing-2) var(--spacing-4);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.inspector-tab:hover {
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+}
+
+.inspector-tab.active {
+    color: var(--color-accent-primary);
+    background: var(--color-bg-primary);
+}
+
+.inspector-tab-spacer {
+    flex: 1;
+}
+
+/* Replay Button */
+.replay-btn {
+    background: var(--color-accent-primary);
+    color: white;
+    border: none;
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-xs);
+    transition: all var(--transition-fast);
+}
+
+.replay-btn:hover {
+    background: var(--color-accent-secondary);
+}
+
+.replay-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.replay-btn.replay-loading {
+    background: var(--color-text-tertiary);
+}
+
+.replay-btn.replay-success {
+    background: var(--color-accent-success);
+}
+
+.replay-btn.replay-error {
+    background: var(--color-accent-error);
+}
+
+.replay-error-msg {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-4);
+    background: #FDECEB;
+    color: var(--color-accent-error);
+    font-size: var(--font-size-sm);
+    flex-shrink: 0;
+}
+
 /* Query Section */
 .query-section {
     background: var(--color-bg-secondary);

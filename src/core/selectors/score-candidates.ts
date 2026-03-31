@@ -98,7 +98,7 @@ function matchSimpleXPath(element: ParsedElement, xpath: string): boolean {
     });
 }
 
-function candidateMatchesElement(candidate: SelectorCandidate, element: ParsedElement): boolean {
+export function candidateMatchesElement(candidate: SelectorCandidate, element: ParsedElement): boolean {
     switch (candidate.strategy) {
         case 'id':
             return element.resourceId === candidate.value;

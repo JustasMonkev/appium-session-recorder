@@ -16,6 +16,12 @@ const App: Component = () => {
     // Get the current action
     const currentAction = createMemo(() => actions()[currentIndex()]);
 
+    // Get the previous action for diff comparison
+    const previousAction = createMemo(() => {
+        const idx = currentIndex();
+        return idx > 0 ? actions()[idx - 1] : undefined;
+    });
+
     // Auto-select the latest action when new ones are added
     createEffect(() => {
         const actionsCount = actions().length;
@@ -32,7 +38,12 @@ const App: Component = () => {
                 onNavigate={setCurrentIndex}
             />
             <main class="app-main">
-                <MainInspector interaction={currentAction()} />
+                <MainInspector
+                    interaction={currentAction()}
+                    previousInteraction={previousAction()}
+                    allActions={actions()}
+                    currentIndex={currentIndex()}
+                />
             </main>
         </div>
     );
