@@ -33,23 +33,23 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@clack/prompts": "^1.0.1",
+    "@clack/prompts": "^1.2.0",
     "@kobalte/core": "^0.13.11",
     "express": "^5.2.1",
     "fast-diff": "^1.3.0",
-    "fast-xml-parser": "^5.4.1",
+    "fast-xml-parser": "^5.5.9",
     "http-proxy-middleware": "^3.0.5",
-    "solid-js": "^1.9.11"
+    "solid-js": "^1.9.12"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.9",
+    "@types/bun": "^1.3.11",
     "@types/express": "^5.0.6",
-    "@vitest/coverage-v8": "^4.0.18",
-    "jsdom": "^28.1.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vite-plugin-solid": "^2.11.10",
-    "vitest": "^4.0.18"
+    "@vitest/coverage-v8": "^4.1.2",
+    "jsdom": "^29.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vite-plugin-solid": "^2.11.11",
+    "vitest": "^4.1.2"
   },
   "publishConfig": {
     "access": "public"
