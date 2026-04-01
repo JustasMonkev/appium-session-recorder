@@ -72,7 +72,7 @@ export function pointInElement(px: number, py: number, el: ParsedElement): boole
  * Find the best element at a given source-coordinate point.
  *
  * Selection criteria (in priority order):
- * 1. Ignore invisible or zero-area elements.
+ * 1. Ignore explicitly hidden or zero-area elements.
  * 2. The element bounds must contain the point.
  * 3. Prefer smallest area (leaf nodes over containers).
  * 4. Deepest xpath (most path segments) as tiebreaker.
@@ -83,26 +83,39 @@ export function hitTest(
     py: number,
     elements: ParsedElement[],
 ): ParsedElement | null {
-    const candidates = elements.filter((el) => {
-        if (el.width === 0 || el.height === 0) return false;
-        if (!el.visible) return false;
-        return pointInElement(px, py, el);
-    });
+    let bestCandidate: {
+        element: ParsedElement;
+        area: number;
+        depth: number;
+        index: number;
+    } | null = null;
 
-    if (candidates.length === 0) return null;
+    for (let index = 0; index < elements.length; index++) {
+        const element = elements[index];
+        if (element.width === 0 || element.height === 0) continue;
+        if (!element.visible) continue;
+        if (!pointInElement(px, py, element)) continue;
 
-    candidates.sort((a, b) => {
-        const areaA = a.width * a.height;
-        const areaB = b.width * b.height;
-        if (areaA !== areaB) return areaA - areaB;
+        const candidate = {
+            element,
+            area: element.width * element.height,
+            depth: element.xpath.split('/').length,
+            index,
+        };
 
-        const depthA = a.xpath.split('/').length;
-        const depthB = b.xpath.split('/').length;
-        if (depthA !== depthB) return depthB - depthA;
+        if (
+            bestCandidate === null ||
+            candidate.area < bestCandidate.area ||
+            (candidate.area === bestCandidate.area && candidate.depth > bestCandidate.depth) ||
+            (
+                candidate.area === bestCandidate.area &&
+                candidate.depth === bestCandidate.depth &&
+                candidate.index > bestCandidate.index
+            )
+        ) {
+            bestCandidate = candidate;
+        }
+    }
 
-        // Later in traversal order = higher index in array
-        return elements.indexOf(b) - elements.indexOf(a);
-    });
-
-    return candidates[0];
+    return bestCandidate?.element ?? null;
 }

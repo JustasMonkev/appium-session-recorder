@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeScale, elementToOverlayRect, renderedToSource, pointInElement, hitTest } from '../element-geometry';
+import { parseXmlSource } from '../xml-parser';
 import type { ParsedElement } from '../../types';
 
 function makeElement(overrides: Partial<ParsedElement> = {}): ParsedElement {
@@ -153,6 +154,29 @@ describe('hitTest', () => {
             xpath: '/App[1]/Visible[1]',
         });
         expect(hitTest(100, 100, [invisible, visible])).toBe(visible);
+    });
+
+    it('should still select elements when visible is omitted in XML', () => {
+        const elements = parseXmlSource(`
+            <App x="0" y="0" width="300" height="300">
+                <Button x="20" y="40" width="120" height="60"></Button>
+            </App>
+        `);
+
+        const hit = hitTest(40, 60, elements);
+        expect(hit?.type).toBe('Button');
+    });
+
+    it('should ignore elements hidden via displayed="false"', () => {
+        const elements = parseXmlSource(`
+            <hierarchy x="0" y="0" width="300" height="300">
+                <Hidden displayed="false" x="20" y="40" width="120" height="60"></Hidden>
+                <Visible x="0" y="0" width="300" height="300"></Visible>
+            </hierarchy>
+        `);
+
+        const hit = hitTest(40, 60, elements);
+        expect(hit?.type).toBe('Visible');
     });
 
     it('should ignore zero-area elements', () => {

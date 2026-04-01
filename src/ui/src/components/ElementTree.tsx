@@ -76,14 +76,17 @@ const TreeNodeRow: Component<{
             >
                 {hasChildren() && (
                     <button
+                        type="button"
                         class="element-tree-toggle"
                         classList={{ 'element-tree-toggle--collapsed': isCollapsed() }}
+                        aria-label={isCollapsed() ? 'Expand child elements' : 'Collapse child elements'}
+                        aria-expanded={!isCollapsed()}
                         onClick={(e) => {
                             e.stopPropagation();
                             props.onToggle(props.node.element.xpath);
                         }}
                     >
-                        ▶
+                        <span aria-hidden="true">▶</span>
                     </button>
                 )}
                 <span class="element-tree-label">{displayName(props.node.element)}</span>
