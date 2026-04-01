@@ -1,4 +1,4 @@
-import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup } from 'solid-js';
+import { type Component, createSignal, Show, For, createEffect } from 'solid-js';
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
@@ -19,7 +19,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
     const [copiedText, setCopiedText] = createSignal<string | null>(null);
     const [queryError, setQueryError] = createSignal<string | null>(null);
-    const [xmlPreRef, setXmlPreRef] = createSignal<HTMLPreElement | undefined>(undefined);
 
     // Reset state when interaction changes
     createEffect(() => {
@@ -135,37 +134,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         const el = selectedElement();
         return el ? generateLocators(el) : [];
     };
-
-    const formatXml = (xml: string) => {
-        // Simple XML formatting for better readability
-        let formatted = '';
-        let indent = 0;
-        const lines = xml.replace(/></g, '>\n<').split('\n');
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            if (trimmed.startsWith('</')) {
-                indent = Math.max(0, indent - 1);
-            }
-
-            formatted += '  '.repeat(indent) + trimmed + '\n';
-
-            if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.endsWith('/>') && !trimmed.includes('</')) {
-                indent++;
-            }
-        }
-
-        return formatted;
-    };
-
-    // Defense-in-depth: render XML as textContent (never HTML)
-    createRenderEffect(() => {
-        const el = xmlPreRef();
-        if (!el) return;
-        el.textContent = formatXml(props.interaction?.source || '');
-    });
 
     const handleElementSelect = (element: ParsedElement) => {
         setSelectedElement(element);
@@ -283,7 +251,7 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     </Show>
                 </div>
 
-                {/* Content Area: Screenshot Left, Element Tree Middle, XML Right */}
+                {/* Content Area: Screenshot Left, Element Tree Right */}
                 <div class="content-area">
                     {/* Screenshot Section with Overlay */}
                     <div class="screenshot-section">
@@ -312,21 +280,8 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                         </div>
                     </Show>
 
-	                    {/* XML Source Section */}
-	                    <div class="xml-section">
-	                        <h3 class="section-title">XML Source</h3>
-	                        <pre
-	                            ref={(el) => {
-	                                setXmlPreRef(el);
-	                                onCleanup(() => {
-	                                    setXmlPreRef(undefined);
-	                                });
-	                            }}
-	                            class="xml-source"
-	                        />
-	                    </div>
-	                </div>
-	            </Show>
-	        </div>
-	    );
+                </div>
+            </Show>
+        </div>
+    );
 };

@@ -15,7 +15,6 @@ type ScreenshotOverlayProps = {
 
 export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
     const [scale, setScale] = createSignal<ScaleFactor>({ scaleX: 1, scaleY: 1 });
-    const [containerRef, setContainerRef] = createSignal<HTMLDivElement | undefined>();
     const [imgRef, setImgRef] = createSignal<HTMLImageElement | undefined>();
 
     const updateScale = () => {
@@ -110,7 +109,6 @@ export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
 
     return (
         <div
-            ref={setContainerRef}
             class="screenshot-overlay-container"
             onClick={handleClick}
             onMouseMove={handleMouseMove}
