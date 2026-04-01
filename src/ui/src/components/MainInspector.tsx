@@ -1,8 +1,10 @@
-import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup } from 'solid-js';
+import { type Component, createSignal, Show, For, createEffect, createMemo } from 'solid-js';
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
 import type { ParsedElement, Locator } from '../types';
+import { ScreenshotOverlay } from './ScreenshotOverlay';
+import { ElementTree } from './ElementTree';
 import './MainInspector.css';
 
 type MainInspectorProps = {
@@ -11,26 +13,27 @@ type MainInspectorProps = {
 
 export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [selectedElement, setSelectedElement] = createSignal<ParsedElement | null>(null);
+    const [hoveredElement, setHoveredElement] = createSignal<ParsedElement | null>(null);
     const [queryStrategy, setQueryStrategy] = createSignal('accessibility id');
     const [queryValue, setQueryValue] = createSignal('');
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
     const [copiedText, setCopiedText] = createSignal<string | null>(null);
     const [queryError, setQueryError] = createSignal<string | null>(null);
-    const [xmlPreRef, setXmlPreRef] = createSignal<HTMLPreElement | undefined>(undefined);
 
     // Reset state when interaction changes
     createEffect(() => {
         if (props.interaction) {
             setSelectedElement(null);
+            setHoveredElement(null);
             setQueryValue('');
             setFoundElements([]);
         }
     });
 
-    const parsedElements = () => {
+    const parsedElements = createMemo(() => {
         if (!props.interaction?.source) return [];
         return parseXmlSource(props.interaction.source);
-    };
+    });
 
     const runQuery = () => {
         const strategy = queryStrategy();
@@ -132,36 +135,13 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         return el ? generateLocators(el) : [];
     };
 
-    const formatXml = (xml: string) => {
-        // Simple XML formatting for better readability
-        let formatted = '';
-        let indent = 0;
-        const lines = xml.replace(/></g, '>\n<').split('\n');
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            if (trimmed.startsWith('</')) {
-                indent = Math.max(0, indent - 1);
-            }
-
-            formatted += '  '.repeat(indent) + trimmed + '\n';
-
-            if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.endsWith('/>') && !trimmed.includes('</')) {
-                indent++;
-            }
-        }
-
-        return formatted;
+    const handleElementSelect = (element: ParsedElement) => {
+        setSelectedElement(element);
     };
 
-    // Defense-in-depth: render XML as textContent (never HTML)
-    createRenderEffect(() => {
-        const el = xmlPreRef();
-        if (!el) return;
-        el.textContent = formatXml(props.interaction?.source || '');
-    });
+    const handleElementHover = (element: ParsedElement | null) => {
+        setHoveredElement(element);
+    };
 
     return (
         <div class="main-inspector">
@@ -271,34 +251,37 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     </Show>
                 </div>
 
-                {/* Content Area: Screenshot Left, XML Right */}
+                {/* Content Area: Screenshot Left, Element Tree Right */}
                 <div class="content-area">
-                    {/* Screenshot Section */}
+                    {/* Screenshot Section with Overlay */}
                     <div class="screenshot-section">
                         <Show when={props.interaction!.screenshot}>
-                            <img
-                                src={`data:image/png;base64,${props.interaction!.screenshot}`}
-                                alt="Screenshot"
-                                class="screenshot-image"
+                            <ScreenshotOverlay
+                                screenshot={props.interaction!.screenshot!}
+                                elements={parsedElements()}
+                                selectedElement={selectedElement()}
+                                hoveredElement={hoveredElement()}
+                                matchedElements={foundElements()}
+                                onElementSelect={handleElementSelect}
+                                onElementHover={handleElementHover}
                             />
                         </Show>
                     </div>
 
-	                    {/* XML Source Section */}
-	                    <div class="xml-section">
-	                        <h3 class="section-title">XML Source</h3>
-	                        <pre
-	                            ref={(el) => {
-	                                setXmlPreRef(el);
-	                                onCleanup(() => {
-	                                    setXmlPreRef(undefined);
-	                                });
-	                            }}
-	                            class="xml-source"
-	                        />
-	                    </div>
-	                </div>
-	            </Show>
-	        </div>
-	    );
+                    {/* Element Tree Section */}
+                    <Show when={props.interaction!.source}>
+                        <div class="element-tree-section">
+                            <ElementTree
+                                elements={parsedElements()}
+                                selectedElement={selectedElement()}
+                                onElementSelect={handleElementSelect}
+                                onElementHover={handleElementHover}
+                            />
+                        </div>
+                    </Show>
+
+                </div>
+            </Show>
+        </div>
+    );
 };

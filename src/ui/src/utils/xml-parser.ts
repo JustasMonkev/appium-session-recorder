@@ -22,7 +22,9 @@ export function parseXmlSource(xmlString: string): ParsedElement[] {
             label: node.getAttribute('label') || '',
             value: node.getAttribute('value') || '',
             enabled: node.getAttribute('enabled') === 'true',
-            visible: node.getAttribute('visible') === 'true',
+            visible:
+                node.getAttribute('visible') !== 'false' &&
+                node.getAttribute('displayed') !== 'false',
             accessible: node.getAttribute('accessible') === 'true',
             x, y, width, height,
             xpath: currentXpath,
