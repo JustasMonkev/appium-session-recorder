@@ -1,4 +1,4 @@
-import { type Component, createSignal, Show, For, createEffect } from 'solid-js';
+import { type Component, createSignal, Show, For, createEffect, createMemo } from 'solid-js';
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
@@ -30,10 +30,10 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         }
     });
 
-    const parsedElements = () => {
+    const parsedElements = createMemo(() => {
         if (!props.interaction?.source) return [];
         return parseXmlSource(props.interaction.source);
-    };
+    });
 
     const runQuery = () => {
         const strategy = queryStrategy();
