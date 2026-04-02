@@ -69,13 +69,26 @@ describe('parseXmlSource', () => {
             expect(result[0].accessible).toBe(true);
         });
 
-        it('should default boolean attributes to false', () => {
+        it('should default enabled and accessible to false', () => {
             const xml = '<element></element>';
             const result = parseXmlSource(xml);
 
             expect(result[0].enabled).toBe(false);
-            expect(result[0].visible).toBe(false);
             expect(result[0].accessible).toBe(false);
+        });
+
+        it('should default visible to true when the attribute is omitted', () => {
+            const xml = '<element></element>';
+            const result = parseXmlSource(xml);
+
+            expect(result[0].visible).toBe(true);
+        });
+
+        it('should treat displayed="false" as not visible', () => {
+            const xml = '<element displayed="false"></element>';
+            const result = parseXmlSource(xml);
+
+            expect(result[0].visible).toBe(false);
         });
 
         it('should default string attributes to empty string', () => {
