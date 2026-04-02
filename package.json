@@ -1,6 +1,6 @@
 {
   "name": "appium-session-recorder",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Interactive Appium session recorder with modern UI",
   "type": "module",
   "bin": {
