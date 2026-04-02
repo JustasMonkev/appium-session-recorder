@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { Request, Response } from 'express';
 import { createRoutes } from '../../src/server/routes';
 import { InteractionRecorder } from '../../src/server/interaction-recorder';
-import { AppiumCommandClient } from '../../src/core/appium/client';
 
 // Mock request
 function createMockRequest(overrides: Partial<Request> = {}): Request {
@@ -45,7 +44,7 @@ describe('createRoutes', () => {
 
     beforeEach(() => {
         recorder = new InteractionRecorder();
-        router = createRoutes(recorder, new AppiumCommandClient('http://localhost:4723'));
+        router = createRoutes(recorder);
     });
 
     // Helper to find route handler

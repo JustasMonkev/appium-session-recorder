@@ -43,6 +43,7 @@ const App: Component = () => {
                     previousInteraction={previousAction()}
                     allActions={actions()}
                     currentIndex={currentIndex()}
+                    onSelectAction={setCurrentIndex}
                 />
             </main>
         </div>

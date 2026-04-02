@@ -1,7 +1,6 @@
 import express from 'express';
 import type { RecorderOptions } from './types';
 import { AppiumClient } from './appium-client';
-import { AppiumCommandClient } from '../core/appium/client';
 import { InteractionRecorder } from './interaction-recorder';
 import { createSessionMiddleware, createAppiumProxy } from './proxy-middleware';
 import { createRoutes } from './routes';
@@ -11,7 +10,6 @@ export function createServer(options: RecorderOptions = {}) {
 
     const app = express();
     const appiumClient = new AppiumClient(appiumUrl);
-    const appiumCommandClient = new AppiumCommandClient(appiumUrl);
     const recorder = new InteractionRecorder();
 
     // Parse JSON bodies
@@ -19,7 +17,7 @@ export function createServer(options: RecorderOptions = {}) {
     app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
     // Register routes
-    app.use(createRoutes(recorder, appiumCommandClient));
+    app.use(createRoutes(recorder));
 
     // Intercept session requests
     app.use('/session/:sessionId', createSessionMiddleware(recorder, appiumClient));

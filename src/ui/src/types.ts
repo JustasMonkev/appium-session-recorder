@@ -45,21 +45,33 @@ export type Locator = {
     value: string;
 };
 
-export type ReplayResult = {
-    ok: boolean;
-    interactionId: number;
-    actionKind: ActionKind;
-    error?: string;
-};
-
 export type DiffSegment = {
     type: 'equal' | 'insert' | 'delete';
     text: string;
 };
 
+export type DiffLine = {
+    type: 'equal' | 'insert' | 'delete';
+    previousLineNumber: number | null;
+    currentLineNumber: number | null;
+    text: string;
+};
+
+export type DiffRow = {
+    previousLineNumber: number | null;
+    previousText: string | null;
+    currentLineNumber: number | null;
+    currentText: string | null;
+};
+
 export type DiffSummary = {
     segments: DiffSegment[];
+    lines: DiffLine[];
+    rows: DiffRow[];
     prevElementCount: number;
     currElementCount: number;
     elementCountDelta: number;
+    insertedLineCount: number;
+    deletedLineCount: number;
+    changedLineCount: number;
 };

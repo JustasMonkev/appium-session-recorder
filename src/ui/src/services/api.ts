@@ -1,4 +1,4 @@
-import type { Interaction, ReplayResult } from '../types';
+import type { Interaction } from '../types';
 
 class ApiClient {
     async getHistory(): Promise<Interaction[]> {
@@ -16,27 +16,6 @@ class ApiClient {
         if(!response.ok) {
             throw new Error(`Failed to clear history: ${response.statusText}`);
         }
-    }
-
-    async replayInteraction(
-        interactionId: number,
-        overrides?: {
-            sessionId?: string;
-            selector?: { using: string; value: string };
-            text?: string;
-            direction?: 'up' | 'down' | 'left' | 'right';
-            from?: { x: number; y: number };
-            to?: { x: number; y: number };
-            durationMs?: number;
-        },
-    ): Promise<ReplayResult> {
-        const response = await fetch(`/_recorder/api/interactions/${interactionId}/replay`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(overrides || {}),
-        });
-
-        return response.json();
     }
 
     connectToStream(onEvent: (event: any) => void): () => void {

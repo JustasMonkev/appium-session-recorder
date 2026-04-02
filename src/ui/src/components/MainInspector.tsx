@@ -2,8 +2,8 @@ import { type Component, createSignal, Show, For, createEffect, createRenderEffe
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
-import { api } from '../services/api';
 import { DiffPanel } from './DiffPanel';
+import { JourneyPanel } from './JourneyPanel';
 import { SelectorStability } from './SelectorStability';
 import type { ParsedElement, Locator } from '../types';
 import './MainInspector.css';
@@ -13,9 +13,8 @@ type MainInspectorProps = {
     previousInteraction?: Interaction;
     allActions?: Interaction[];
     currentIndex?: number;
+    onSelectAction?: (index: number) => void;
 };
-
-const REPLAYABLE_ACTIONS = ['tap', 'type', 'clear', 'back', 'swipe', 'scroll'];
 
 export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [selectedElement, setSelectedElement] = createSignal<ParsedElement | null>(null);
@@ -25,9 +24,7 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [copiedText, setCopiedText] = createSignal<string | null>(null);
     const [queryError, setQueryError] = createSignal<string | null>(null);
     const [xmlPreRef, setXmlPreRef] = createSignal<HTMLPreElement | undefined>(undefined);
-    const [activeTab, setActiveTab] = createSignal<'inspect' | 'diff'>('inspect');
-    const [replayStatus, setReplayStatus] = createSignal<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [replayError, setReplayError] = createSignal<string | null>(null);
+    const [activeTab, setActiveTab] = createSignal<'inspect' | 'diff' | 'journey'>('inspect');
 
     // Reset state when interaction changes
     createEffect(() => {
@@ -35,8 +32,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
             setSelectedElement(null);
             setQueryValue('');
             setFoundElements([]);
-            setReplayStatus('idle');
-            setReplayError(null);
         }
     });
 
@@ -44,12 +39,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         if (!props.interaction?.source) return [];
         return parseXmlSource(props.interaction.source);
     };
-
-    const canReplay = createMemo(() => {
-        const action = props.interaction;
-        if (!action) return false;
-        return action.actionKind != null && REPLAYABLE_ACTIONS.includes(action.actionKind);
-    });
 
     const futureActions = createMemo(() => {
         const all = props.allActions || [];
@@ -159,28 +148,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         return el ? generateLocators(el) : [];
     };
 
-    const handleReplay = async () => {
-        const action = props.interaction;
-        if (!action) return;
-
-        setReplayStatus('loading');
-        setReplayError(null);
-
-        try {
-            const result = await api.replayInteraction(action.id);
-            if (result.ok) {
-                setReplayStatus('success');
-                setTimeout(() => setReplayStatus('idle'), 2000);
-            } else {
-                setReplayStatus('error');
-                setReplayError(result.error || 'Replay failed');
-            }
-        } catch (err) {
-            setReplayStatus('error');
-            setReplayError(err instanceof Error ? err.message : 'Replay request failed');
-        }
-    };
-
     const formatXml = (xml: string) => {
         // Simple XML formatting for better readability
         let formatted = '';
@@ -241,35 +208,14 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     >
                         Diff
                     </button>
-
-                    {/* Replay Button */}
-                    <Show when={canReplay()}>
-                        <div class="inspector-tab-spacer" />
-                        <button
-                            class="replay-btn"
-                            classList={{
-                                'replay-loading': replayStatus() === 'loading',
-                                'replay-success': replayStatus() === 'success',
-                                'replay-error': replayStatus() === 'error',
-                            }}
-                            onClick={handleReplay}
-                            disabled={replayStatus() === 'loading'}
-                        >
-                            {replayStatus() === 'loading' ? 'Replaying...'
-                                : replayStatus() === 'success' ? 'Replayed!'
-                                : replayStatus() === 'error' ? 'Failed'
-                                : `Replay ${props.interaction!.actionKind}`}
-                        </button>
-                    </Show>
+                    <button
+                        class="inspector-tab"
+                        classList={{ active: activeTab() === 'journey' }}
+                        onClick={() => setActiveTab('journey')}
+                    >
+                        Journey
+                    </button>
                 </div>
-
-                {/* Replay Error */}
-                <Show when={replayError()}>
-                    <div class="replay-error-msg">
-                        {replayError()}
-                        <button class="error-dismiss" onClick={() => setReplayError(null)}>✕</button>
-                    </div>
-                </Show>
 
                 {/* Inspect Tab */}
                 <Show when={activeTab() === 'inspect'}>
@@ -409,6 +355,14 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     <DiffPanel
                         current={props.interaction!}
                         previous={props.previousInteraction}
+                    />
+                </Show>
+
+                <Show when={activeTab() === 'journey'}>
+                    <JourneyPanel
+                        actions={props.allActions || []}
+                        currentIndex={props.currentIndex ?? 0}
+                        onSelectAction={props.onSelectAction}
                     />
                 </Show>
 	        </Show>

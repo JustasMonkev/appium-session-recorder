@@ -32,23 +32,6 @@ export type Interaction = {
     actionKind?: ActionKind;
 };
 
-export type ReplayRequest = {
-    sessionId: string;
-    selector?: { using: string; value: string };
-    text?: string;
-    direction?: 'up' | 'down' | 'left' | 'right';
-    from?: { x: number; y: number };
-    to?: { x: number; y: number };
-    durationMs?: number;
-};
-
-export type ReplayResult = {
-    ok: boolean;
-    interactionId: number;
-    actionKind: ActionKind;
-    error?: string;
-};
-
 export type AppiumResponse = {
     value: any;
     sessionId?: string;

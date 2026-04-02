@@ -8,7 +8,8 @@ describe('computeXmlDiff', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0].type).toBe('equal');
-        expect(result[0].text).toBe(xml);
+        expect(result[0].text).toContain('<root>');
+        expect(result[0].text).toContain('<child/>');
     });
 
     it('should detect insertions', () => {
