@@ -19,7 +19,10 @@ function createMockRequest(overrides: Partial<Request> = {}): Request {
 // Mock Express response
 function createMockResponse(): Response {
     const listeners: Record<string, Function[]> = {};
-    return {
+    const res: Partial<Response> & { emit: (event: string) => void } = {
+        statusCode: 200,
+        write: vi.fn().mockReturnValue(true),
+        end: vi.fn().mockReturnValue(undefined),
         on: vi.fn((event: string, callback: Function) => {
             if (!listeners[event]) listeners[event] = [];
             listeners[event].push(callback);
@@ -28,7 +31,11 @@ function createMockResponse(): Response {
         emit: (event: string) => {
             listeners[event]?.forEach(cb => cb());
         },
-    } as unknown as Response;
+    };
+
+    return {
+        ...res,
+    } as Response;
 }
 
 describe('createSessionMiddleware', () => {
@@ -184,6 +191,39 @@ describe('createSessionMiddleware', () => {
 
             const history = recorder.getHistory();
             expect(history[0].elementInfo).toBeUndefined();
+        });
+
+        it('reuses the selector that originally resolved an element id', async () => {
+            const findReq = createMockRequest({
+                path: '/session/abc123/element',
+                originalUrl: '/session/abc123/element',
+                body: { using: 'accessibility id', value: 'loginButton' },
+            });
+            const findRes = createMockResponse();
+
+            await middleware(findReq, findRes, mockNext);
+
+            (findRes.end as any)(JSON.stringify({
+                value: {
+                    'element-6066-11e4-a52e-4f735466cecf': 'element-1',
+                },
+            }));
+            (findRes as any).emit('finish');
+
+            const clickReq = createMockRequest({
+                path: '/session/abc123/element/element-1/click',
+                originalUrl: '/session/abc123/element/element-1/click',
+                body: {},
+            });
+            const clickRes = createMockResponse();
+
+            await middleware(clickReq, clickRes, mockNext);
+
+            const history = recorder.getHistory();
+            expect(history[1].elementInfo).toEqual({
+                using: 'accessibility id',
+                value: 'loginButton',
+            });
         });
     });
 

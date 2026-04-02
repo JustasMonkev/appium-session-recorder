@@ -9,6 +9,16 @@ export type ElementInfo = {
     value: string;
 };
 
+export type ActionKind =
+    | 'tap'
+    | 'type'
+    | 'clear'
+    | 'back'
+    | 'swipe'
+    | 'scroll'
+    | 'find'
+    | 'unknown';
+
 export type Interaction = {
     id: number;
     timestamp: string;
@@ -18,6 +28,8 @@ export type Interaction = {
     screenshot?: string;  // base64
     source?: string;      // XML
     elementInfo?: ElementInfo;
+    sessionId?: string;
+    actionKind?: ActionKind;
 };
 
 export type AppiumResponse = {

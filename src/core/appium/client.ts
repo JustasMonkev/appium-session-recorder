@@ -167,6 +167,10 @@ export class AppiumCommandClient {
             });
         }
 
+        await this.tapElement(sessionId, elementId);
+    }
+
+    async tapElement(sessionId: string, elementId: string): Promise<void> {
         await this.request('POST', `/session/${sessionId}/element/${elementId}/click`, {});
     }
 
@@ -178,6 +182,10 @@ export class AppiumCommandClient {
                 value,
             });
         }
+        await this.clearElement(sessionId, elementId);
+    }
+
+    async clearElement(sessionId: string, elementId: string): Promise<void> {
         await this.request('POST', `/session/${sessionId}/element/${elementId}/clear`, {});
     }
 
@@ -191,9 +199,13 @@ export class AppiumCommandClient {
         }
 
         if (clearFirst) {
-            await this.request('POST', `/session/${sessionId}/element/${elementId}/clear`, {});
+            await this.clearElement(sessionId, elementId);
         }
 
+        await this.typeElement(sessionId, elementId, text);
+    }
+
+    async typeElement(sessionId: string, elementId: string, text: string): Promise<void> {
         await this.request('POST', `/session/${sessionId}/element/${elementId}/value`, {
             text,
             value: [...text],
