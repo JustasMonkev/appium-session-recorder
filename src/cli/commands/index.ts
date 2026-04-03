@@ -1,4 +1,5 @@
 import { runDriveBack, runDriveScroll, runDriveSwipe, runDriveTap, runDriveType } from './drive';
+import { runModelSetup, runModelPredict, runModelExecute } from './model';
 import { runProxyStart } from './proxy';
 import { runScreenElements, runScreenSnapshot } from './screen';
 import { runSelectorsBest } from './selectors';
@@ -48,6 +49,18 @@ export async function dispatchCommand(group: string, command: string, args: stri
 
     if (group === 'drive' && command === 'scroll') {
         return await runDriveScroll(args);
+    }
+
+    if (group === 'model' && command === 'setup') {
+        return await runModelSetup(args);
+    }
+
+    if (group === 'model' && command === 'predict') {
+        return await runModelPredict(args);
+    }
+
+    if (group === 'model' && command === 'execute') {
+        return await runModelExecute(args);
     }
 
     throw new Error(`Unsupported command: ${group} ${command}`);

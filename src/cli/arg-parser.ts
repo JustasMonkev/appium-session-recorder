@@ -77,7 +77,7 @@ export type GlobalCliOptions = {
 };
 
 export type CommandRoute = {
-    group: 'proxy' | 'session' | 'screen' | 'selectors' | 'drive';
+    group: 'proxy' | 'session' | 'screen' | 'selectors' | 'drive' | 'model';
     command: string;
     args: string[];
 };
@@ -101,6 +101,7 @@ const commandSubcommands: Record<string, string[]> = {
     screen: ['snapshot', 'elements'],
     selectors: ['best'],
     drive: ['tap', 'type', 'back', 'swipe', 'scroll'],
+    model: ['setup', 'predict', 'execute'],
 };
 
 const LEGACY_GLOBAL_FLAGS_ERROR = '--pretty and --output are only supported with <group> <command> mode';
