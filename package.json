@@ -7,7 +7,7 @@
     "appium-recorder": "./dist/index.js"
   },
   "engines": {
-    "node": ">=22.15.0",
+    "node": ">=24.16.0",
     "bun": ">=1.0.0"
   },
   "keywords": [
