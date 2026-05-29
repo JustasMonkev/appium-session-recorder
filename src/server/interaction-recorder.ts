@@ -1,5 +1,18 @@
 import type { Interaction, ServerEvent } from './types';
 
+const ACTION_PATTERNS: readonly RegExp[] = [
+    /\/element\/[^/]+\/click$/,
+    /\/element\/[^/]+\/value$/,
+    /\/element\/[^/]+\/clear$/,
+    /\/element$/,
+    /\/elements$/,
+    /\/touch\/perform$/,
+    /\/actions$/,
+    /\/back$/,
+    /\/forward$/,
+    /\/refresh$/,
+];
+
 export class InteractionRecorder {
     private history: Interaction[] = [];
     private interactionId = 0;
@@ -13,21 +26,8 @@ export class InteractionRecorder {
     }
 
     isActionEndpoint(method: string, path: string): boolean {
-        const actionPatterns = [
-            /\/element\/[^/]+\/click$/,
-            /\/element\/[^/]+\/value$/,
-            /\/element\/[^/]+\/clear$/,
-            /\/element$/,
-            /\/elements$/,
-            /\/touch\/perform$/,
-            /\/actions$/,
-            /\/back$/,
-            /\/forward$/,
-            /\/refresh$/,
-        ];
-
         if (method === 'POST' || method === 'DELETE') {
-            return actionPatterns.some(pattern => pattern.test(path));
+            return ACTION_PATTERNS.some(pattern => pattern.test(path));
         }
         return false;
     }

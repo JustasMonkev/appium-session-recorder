@@ -184,14 +184,21 @@ export function parseSource(xmlString: string): ParsedSource {
         elements.find(element => element.platform === 'android')?.platform ||
         'unknown';
 
-    const withResolvedPlatform = elements.map(element => ({
-        ...element,
-        platform: element.platform === 'unknown' ? platform : element.platform,
-        elementRef: makeElementRef(element.platform === 'unknown' ? platform : element.platform, element.xpath),
-    }));
+    // Resolve any elements whose platform couldn't be detected locally to the
+    // page-level platform. The elements are freshly-created local objects, so we
+    // mutate them in place instead of allocating a parallel array — a meaningful
+    // saving for large page sources with hundreds of nodes.
+    if (platform !== 'unknown') {
+        for (const element of elements) {
+            if (element.platform === 'unknown') {
+                element.platform = platform;
+                element.elementRef = makeElementRef(platform, element.xpath);
+            }
+        }
+    }
 
     return {
         platform,
-        elements: withResolvedPlatform,
+        elements,
     };
 }
