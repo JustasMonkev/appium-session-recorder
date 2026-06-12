@@ -9,6 +9,16 @@ export default defineConfig({
     build: {
         outDir: '../../dist/ui',
         emptyOutDir: true,
+        target: 'es2020',
+        chunkSizeWarningLimit: 600,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    solid: ['solid-js'],
+                    kobalte: ['@kobalte/core'],
+                },
+            },
+        },
     },
     server: {
         port: 3000,

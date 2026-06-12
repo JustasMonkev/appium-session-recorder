@@ -1,4 +1,4 @@
-import { type Component, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
+import { type Component, createSignal, createEffect, createMemo, onCleanup, For, Show } from 'solid-js';
 import type { ParsedElement } from '../types';
 import { computeScale, elementToOverlayRect, renderedToSource, hitTest } from '../utils/element-geometry';
 import type { ScaleFactor } from '../utils/element-geometry';
@@ -16,6 +16,7 @@ type ScreenshotOverlayProps = {
 export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
     const [scale, setScale] = createSignal<ScaleFactor>({ scaleX: 1, scaleY: 1 });
     const [imgRef, setImgRef] = createSignal<HTMLImageElement | undefined>();
+    let mouseMoveRafId: number | undefined;
 
     const updateScale = () => {
         const img = imgRef();
@@ -37,6 +38,10 @@ export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
         });
     });
 
+    onCleanup(() => {
+        if (mouseMoveRafId !== undefined) cancelAnimationFrame(mouseMoveRafId);
+    });
+
     const handleClick = (e: MouseEvent) => {
         const img = imgRef();
         if (!img) return;
@@ -53,25 +58,35 @@ export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-        const img = imgRef();
-        if (!img) return;
+        const clientX = e.clientX;
+        const clientY = e.clientY;
 
-        const rect = img.getBoundingClientRect();
-        const renderedX = e.clientX - rect.left;
-        const renderedY = e.clientY - rect.top;
+        if (mouseMoveRafId !== undefined) cancelAnimationFrame(mouseMoveRafId);
+        mouseMoveRafId = requestAnimationFrame(() => {
+            mouseMoveRafId = undefined;
+            const img = imgRef();
+            if (!img) return;
 
-        // Only detect hover when mouse is over the image
-        if (renderedX < 0 || renderedY < 0 || renderedX > img.clientWidth || renderedY > img.clientHeight) {
-            props.onElementHover(null);
-            return;
-        }
+            const rect = img.getBoundingClientRect();
+            const renderedX = clientX - rect.left;
+            const renderedY = clientY - rect.top;
 
-        const sourcePoint = renderedToSource(renderedX, renderedY, scale());
-        const hit = hitTest(sourcePoint.x, sourcePoint.y, props.elements);
-        props.onElementHover(hit);
+            if (renderedX < 0 || renderedY < 0 || renderedX > img.clientWidth || renderedY > img.clientHeight) {
+                props.onElementHover(null);
+                return;
+            }
+
+            const sourcePoint = renderedToSource(renderedX, renderedY, scale());
+            const hit = hitTest(sourcePoint.x, sourcePoint.y, props.elements);
+            props.onElementHover(hit);
+        });
     };
 
     const handleMouseLeave = () => {
+        if (mouseMoveRafId !== undefined) {
+            cancelAnimationFrame(mouseMoveRafId);
+            mouseMoveRafId = undefined;
+        }
         props.onElementHover(null);
     };
 
@@ -101,11 +116,13 @@ export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
         };
     };
 
-    const isSelectedOrHovered = (el: ParsedElement) => {
-        const sel = props.selectedElement;
-        const hov = props.hoveredElement;
-        return (sel && sel.xpath === el.xpath) || (hov && hov.xpath === el.xpath);
-    };
+    const isSelectedOrHovered = createMemo(() => {
+        const selXpath = props.selectedElement?.xpath;
+        const hovXpath = props.hoveredElement?.xpath;
+        return (el: ParsedElement) =>
+            (selXpath !== undefined && selXpath === el.xpath) ||
+            (hovXpath !== undefined && hovXpath === el.xpath);
+    });
 
     return (
         <div
@@ -122,7 +139,7 @@ export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
             />
             <div class="screenshot-overlay-rects">
                 {/* Matched elements (lowest z-order) */}
-                <For each={props.matchedElements.filter(el => !isSelectedOrHovered(el))}>
+                <For each={props.matchedElements.filter(el => !isSelectedOrHovered()(el))}>
                     {(el) => <div style={overlayStyle(el, 'matched')} />}
                 </For>
 

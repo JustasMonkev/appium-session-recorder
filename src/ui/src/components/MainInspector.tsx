@@ -35,10 +35,10 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         }
     });
 
-    const parsedElements = () => {
+    const parsedElements = createMemo(() => {
         if (!props.interaction?.source) return [];
         return parseXmlSource(props.interaction.source);
-    };
+    });
 
     const futureActions = createMemo(() => {
         const all = props.allActions || [];
@@ -143,10 +143,10 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         setTimeout(() => setCopiedText(null), 2000);
     };
 
-    const locators = (): Locator[] => {
+    const locators = createMemo((): Locator[] => {
         const el = selectedElement();
         return el ? generateLocators(el) : [];
-    };
+    });
 
     const formatXml = (xml: string) => {
         // Simple XML formatting for better readability

@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, createEffect } from 'solid-js';
+import { createSignal, createMemo, onCleanup, createEffect } from 'solid-js';
 import type { Interaction } from '../types';
 import { api } from '../services/api';
 
@@ -57,11 +57,10 @@ export function useInteractions() {
         await loadHistory();
     }
 
-    const actions = interactions().filter(i => i.screenshot);
-    const stats = () => ({
+    const stats = createMemo(() => ({
         total: interactions().length,
-        actions: actions.length,
-    });
+        actions: interactions().filter(i => i.screenshot).length,
+    }));
 
     return {
         interactions,

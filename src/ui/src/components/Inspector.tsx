@@ -1,4 +1,4 @@
-import { type Component, createSignal, Show, For } from 'solid-js';
+import { type Component, createSignal, createMemo, Show, For } from 'solid-js';
 import { Dialog } from '@kobalte/core/dialog';
 import type { Interaction } from '../types';
 import { parseXmlSource } from '../utils/xml-parser';
@@ -19,10 +19,10 @@ export const Inspector: Component<InspectorProps> = (props) => {
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
     const [showSource, setShowSource] = createSignal(false);
 
-    const parsedElements = () => {
+    const parsedElements = createMemo(() => {
         if (!props.interaction?.source) return [];
         return parseXmlSource(props.interaction.source);
-    };
+    });
 
     const runQuery = () => {
         const strategy = queryStrategy();
@@ -124,10 +124,10 @@ export const Inspector: Component<InspectorProps> = (props) => {
         navigator.clipboard.writeText(text);
     };
 
-    const locators = (): Locator[] => {
+    const locators = createMemo((): Locator[] => {
         const el = selectedElement();
         return el ? generateLocators(el) : [];
-    };
+    });
 
     const resetState = () => {
         setSelectedElement(null);

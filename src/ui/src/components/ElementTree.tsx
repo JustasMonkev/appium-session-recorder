@@ -1,4 +1,4 @@
-import { type Component, For, createSignal, createMemo } from 'solid-js';
+import { type Accessor, type Component, For, createSignal, createMemo } from 'solid-js';
 import type { ParsedElement } from '../types';
 
 type TreeNode = {
@@ -52,13 +52,13 @@ function displayName(el: ParsedElement): string {
 const TreeNodeRow: Component<{
     node: TreeNode;
     selectedElement: ParsedElement | null;
-    collapsedPaths: Set<string>;
+    collapsedPaths: Accessor<Set<string>>;
     onToggle: (xpath: string) => void;
     onElementSelect: (element: ParsedElement) => void;
     onElementHover: (element: ParsedElement | null) => void;
 }> = (props) => {
     const isSelected = () => props.selectedElement?.xpath === props.node.element.xpath;
-    const isCollapsed = () => props.collapsedPaths.has(props.node.element.xpath);
+    const isCollapsed = () => props.collapsedPaths().has(props.node.element.xpath);
     const hasChildren = () => props.node.children.length > 0;
 
     return (
@@ -135,7 +135,7 @@ export const ElementTree: Component<ElementTreeProps> = (props) => {
                         <TreeNodeRow
                             node={node}
                             selectedElement={props.selectedElement}
-                            collapsedPaths={collapsedPaths()}
+                            collapsedPaths={collapsedPaths}
                             onToggle={toggleNode}
                             onElementSelect={props.onElementSelect}
                             onElementHover={props.onElementHover}
