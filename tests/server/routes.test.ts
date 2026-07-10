@@ -170,7 +170,9 @@ describe('createRoutes', () => {
 
             expect(res._written.length).toBe(afterRecordCount + 1);
             const eventData = JSON.parse(res._written[res._written.length - 1].replace('data: ', '').replace('\n\n', ''));
-            expect(eventData.data.screenshotUrl).toBe(`/_recorder/api/screenshot/${interaction.id}`);
+            expect(eventData.data.screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${interaction.id}\\?v=\\d+$`),
+            );
             expect(eventData.data.source).toBe('<xml/>');
         });
 

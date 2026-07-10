@@ -281,7 +281,9 @@ describe('createSessionMiddleware', () => {
             expect(appiumClient.captureState).toHaveBeenCalledWith('abc123');
 
             const history = recorder.getHistory();
-            expect(history[0].screenshotUrl).toBe(`/_recorder/api/screenshot/${history[0].id}`);
+            expect(history[0].screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${history[0].id}\\?v=\\d+$`),
+            );
             expect(history[0].source).toBe('<xml>source</xml>');
             expect(recorder.getScreenshot(history[0].id)).toEqual(Buffer.from('png-bytes'));
         });
@@ -304,7 +306,9 @@ describe('createSessionMiddleware', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
 
             const history = recorder.getHistory();
-            expect(history[0].screenshotUrl).toBe(`/_recorder/api/screenshot/${history[0].id}`);
+            expect(history[0].screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${history[0].id}\\?v=\\d+$`),
+            );
             expect(history[0].source).toBeUndefined();
         });
     });

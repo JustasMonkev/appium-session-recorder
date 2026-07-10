@@ -273,7 +273,9 @@ describe('InteractionRecorder', () => {
             });
 
             const history = recorder.getHistory();
-            expect(history[0].screenshotUrl).toBe(`/_recorder/api/screenshot/${interaction.id}`);
+            expect(history[0].screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${interaction.id}\\?v=\\d+$`),
+            );
             expect(history[0].source).toBe('<xml>source</xml>');
             expect(recorder.getScreenshot(interaction.id)).toEqual(Buffer.from('fake-png-bytes'));
         });
@@ -419,6 +421,30 @@ describe('InteractionRecorder', () => {
             expect(history).toHaveLength(500);
             expect(history[0].path).not.toBe('/path-first');
             expect(recorder.getScreenshot(first.id)).toBeUndefined();
+        });
+
+        it('should emit an evict event so connected clients drop evicted interactions', () => {
+            const first = recorder.recordInteraction({ method: 'POST', path: '/path-first' });
+            for (let i = 0; i < 499; i++) {
+                recorder.recordInteraction({ method: 'POST', path: `/path-${i}` });
+            }
+
+            const listener = vi.fn();
+            recorder.on(listener);
+
+            recorder.recordInteraction({ method: 'POST', path: '/path-overflow' });
+
+            expect(listener).toHaveBeenCalledTimes(2);
+            expect(listener).toHaveBeenNthCalledWith(
+                1,
+                expect.objectContaining({ type: 'interaction' }),
+                expect.any(String),
+            );
+            expect(listener).toHaveBeenNthCalledWith(
+                2,
+                { type: 'evict', data: { ids: [first.id] } },
+                JSON.stringify({ type: 'evict', data: { ids: [first.id] } }),
+            );
         });
     });
 

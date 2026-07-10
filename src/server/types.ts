@@ -43,9 +43,11 @@ export type AppiumResponse = {
     status?: number;
 };
 
-export type ServerEventType = 'interaction' | 'clear';
+export type ServerEvent =
+    | { type: 'interaction'; data: Interaction }
+    | { type: 'clear'; data: null }
+    // Emitted when old interactions are evicted by the history cap so
+    // connected clients can drop them too.
+    | { type: 'evict'; data: { ids: number[] } };
 
-export type ServerEvent = {
-    type: ServerEventType;
-    data: Interaction | null;
-};
+export type ServerEventType = ServerEvent['type'];

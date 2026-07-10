@@ -50,13 +50,18 @@ export class InteractionRecorder {
         this.history.push(fullInteraction);
         this.byId.set(fullInteraction.id, fullInteraction);
 
+        const evictedIds: number[] = [];
         while (this.history.length > MAX_HISTORY) {
             const evicted = this.history.shift()!;
             this.byId.delete(evicted.id);
             this.screenshots.delete(evicted.id);
+            evictedIds.push(evicted.id);
         }
 
         this.emit({ type: 'interaction', data: fullInteraction });
+        if (evictedIds.length > 0) {
+            this.emit({ type: 'evict', data: { ids: evictedIds } });
+        }
 
         return fullInteraction;
     }
@@ -80,7 +85,11 @@ export class InteractionRecorder {
 
         if (state.screenshot) {
             this.screenshots.set(id, Buffer.from(state.screenshot, 'base64'));
-            interaction.screenshotUrl = `/_recorder/api/screenshot/${id}`;
+            // The capture-time token makes the URL unique even if interaction
+            // ids are reused (clearHistory resets the counter, and ids restart
+            // across server runs), so immutable caching can never serve a
+            // stale screenshot for a new capture.
+            interaction.screenshotUrl = `/_recorder/api/screenshot/${id}?v=${Date.now()}`;
         }
         if (state.source) {
             interaction.source = state.source;

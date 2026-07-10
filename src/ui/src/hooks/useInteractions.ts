@@ -38,6 +38,12 @@ export function useInteractions() {
                         return [...prev, event.data];
                     }
                 });
+            } else if (event.type === 'evict') {
+                // Server evicted old interactions past its history cap;
+                // drop them here too so client memory stays bounded and we
+                // don't keep cards whose screenshot URLs now 404
+                const evicted = new Set<number>(event.data.ids);
+                setInteractions(prev => prev.filter(i => !evicted.has(i.id)));
             } else if (event.type === 'clear') {
                 setInteractions([]);
             }
