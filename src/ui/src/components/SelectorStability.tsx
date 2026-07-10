@@ -1,6 +1,6 @@
 import { type Component, createMemo, Show, For } from 'solid-js';
 import type { Interaction, ParsedElement, Locator } from '../types';
-import { parseXmlSource } from '../utils/xml-parser';
+import { getParsedElements } from '../utils/xml-parser';
 import './SelectorStability.css';
 
 type SelectorStabilityProps = {
@@ -18,67 +18,80 @@ type StabilityRow = {
     totalSteps: number;
 };
 
-function matchLocator(strategy: string, value: string, elements: ParsedElement[]): number {
+type ElementMatcher = (el: ParsedElement) => boolean;
+
+const neverMatches: ElementMatcher = () => false;
+
+/**
+ * Parse a locator once into a matcher so evaluating it across many snapshots
+ * doesn't re-run the regex parsing for every snapshot.
+ */
+function compileLocatorMatcher(strategy: string, value: string): ElementMatcher {
     switch (strategy) {
         case 'accessibility id':
-            return elements.filter(el => el.name === value || el.label === value).length;
+            return el => el.name === value || el.label === value;
         case 'class name':
-            return elements.filter(el => el.type === value).length;
+            return el => el.type === value;
         case 'xpath':
             // Can't evaluate arbitrary xpath in this context without DOMParser per snapshot
             // Fall back to exact xpath match
-            return elements.filter(el => el.xpath === value).length;
+            return el => el.xpath === value;
         case '-ios predicate string': {
             const eqMatch = value.match(/(name|label|type)\s*==\s*['"](.+?)['"]/i);
-            if (eqMatch) {
-                const [, field, expected] = eqMatch;
-                return elements.filter(el => {
-                    if (field === 'name') return el.name === expected;
-                    if (field === 'label') return el.label === expected;
-                    return el.type === expected;
-                }).length;
-            }
-            return 0;
+            if (!eqMatch) return neverMatches;
+            const [, field, expected] = eqMatch;
+            if (field === 'name') return el => el.name === expected;
+            if (field === 'label') return el => el.label === expected;
+            return el => el.type === expected;
         }
         case '-ios class chain': {
             const ccMatch = value.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
-            if (!ccMatch) return 0;
+            if (!ccMatch) return neverMatches;
             const targetType = ccMatch[1];
             const predicate = ccMatch[2];
-            return elements.filter(el => {
+            if (!predicate) return el => el.type === targetType;
+            const nameMatch = predicate.match(/name\s*==\s*['"](.*)['"]/i);
+            const labelMatch = nameMatch ? null : predicate.match(/label\s*==\s*['"](.*)['"]/i);
+            return el => {
                 if (el.type !== targetType) return false;
-                if (!predicate) return true;
-                const nameMatch = predicate.match(/name\s*==\s*['"](.*)['"]/i);
                 if (nameMatch) return el.name === nameMatch[1];
-                const labelMatch = predicate.match(/label\s*==\s*['"](.*)['"]/i);
                 if (labelMatch) return el.label === labelMatch[1];
                 return true;
-            }).length;
+            };
         }
         default:
-            return 0;
+            return neverMatches;
     }
 }
 
 export const SelectorStability: Component<SelectorStabilityProps> = (props) => {
+    // Parsed per interaction and cached (getParsedElements), and kept in a
+    // separate memo so selecting a different element doesn't re-parse the
+    // future snapshots — only the cheap matching below re-runs.
+    const snapshots = createMemo<ParsedElement[][]>(() =>
+        props.futureActions
+            .filter(a => a.source)
+            .map(a => getParsedElements(a))
+    );
+
     const stabilityRows = createMemo((): StabilityRow[] => {
-        if (!props.selectedElement || props.locators.length === 0 || props.futureActions.length === 0) {
+        if (!props.selectedElement || props.locators.length === 0) {
             return [];
         }
 
-        // Parse all future action sources into element lists
-        const snapshots = props.futureActions
-            .filter(a => a.source)
-            .map(a => parseXmlSource(a.source!));
-
-        if (snapshots.length === 0) return [];
+        const parsedSnapshots = snapshots();
+        if (parsedSnapshots.length === 0) return [];
 
         return props.locators.map(locator => {
             let stableSteps = 0;
             let firstFailureStep = 0;
+            const matches = compileLocatorMatcher(locator.strategy, locator.value);
 
-            for (let i = 0; i < snapshots.length; i++) {
-                const matchCount = matchLocator(locator.strategy, locator.value, snapshots[i]);
+            for (let i = 0; i < parsedSnapshots.length; i++) {
+                let matchCount = 0;
+                for (const el of parsedSnapshots[i]) {
+                    if (matches(el)) matchCount++;
+                }
                 if (matchCount === 1) {
                     stableSteps++;
                 } else if (firstFailureStep === 0) {
@@ -91,7 +104,7 @@ export const SelectorStability: Component<SelectorStabilityProps> = (props) => {
                 value: locator.value,
                 stableSteps,
                 firstFailureStep,
-                totalSteps: snapshots.length,
+                totalSteps: parsedSnapshots.length,
             };
         }).sort((a, b) => b.stableSteps - a.stableSteps);
     });

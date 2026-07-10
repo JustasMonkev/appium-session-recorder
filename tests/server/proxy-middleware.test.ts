@@ -262,9 +262,11 @@ describe('createSessionMiddleware', () => {
             });
             const res = createMockResponse();
 
+            const screenshotBase64 = Buffer.from('png-bytes').toString('base64');
+
             // Mock captureState
             vi.spyOn(appiumClient, 'captureState').mockResolvedValue({
-                screenshot: 'base64Screenshot',
+                screenshot: screenshotBase64,
                 source: '<xml>source</xml>',
             });
 
@@ -279,8 +281,11 @@ describe('createSessionMiddleware', () => {
             expect(appiumClient.captureState).toHaveBeenCalledWith('abc123');
 
             const history = recorder.getHistory();
-            expect(history[0].screenshot).toBe('base64Screenshot');
+            expect(history[0].screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${history[0].id}\\?v=\\d+$`),
+            );
             expect(history[0].source).toBe('<xml>source</xml>');
+            expect(recorder.getScreenshot(history[0].id)).toEqual(Buffer.from('png-bytes'));
         });
 
         it('should handle captureState returning partial data', async () => {
@@ -292,7 +297,7 @@ describe('createSessionMiddleware', () => {
             const res = createMockResponse();
 
             vi.spyOn(appiumClient, 'captureState').mockResolvedValue({
-                screenshot: 'base64Screenshot',
+                screenshot: Buffer.from('png-bytes').toString('base64'),
             });
 
             await middleware(req, res, mockNext);
@@ -301,7 +306,9 @@ describe('createSessionMiddleware', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
 
             const history = recorder.getHistory();
-            expect(history[0].screenshot).toBe('base64Screenshot');
+            expect(history[0].screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${history[0].id}\\?v=\\d+$`),
+            );
             expect(history[0].source).toBeUndefined();
         });
     });

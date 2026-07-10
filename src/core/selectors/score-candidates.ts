@@ -32,47 +32,49 @@ function xpathFragilityPenalty(xpath: string): number {
     return penalty;
 }
 
-function valueEquals(value: string, expected: string): boolean {
-    return value === expected;
-}
+export type ElementMatcher = (element: ParsedElement) => boolean;
 
-function matchIosPredicate(element: ParsedElement, predicate: string): boolean {
+const neverMatches: ElementMatcher = () => false;
+
+function compileIosPredicate(predicate: string): ElementMatcher {
     const equalsMatch = predicate.match(/(name|label|type)\s*==\s*['"](.+?)['"]/i);
     if (equalsMatch) {
         const [, field, expected] = equalsMatch;
-        if (field === 'name') return valueEquals(element.name, expected);
-        if (field === 'label') return valueEquals(element.label, expected);
-        return valueEquals(element.type, expected);
+        if (field === 'name') return element => element.name === expected;
+        if (field === 'label') return element => element.label === expected;
+        return element => element.type === expected;
     }
 
     const containsMatch = predicate.match(/(name|label|type)\s*CONTAINS\s*['"](.+?)['"]/i);
     if (containsMatch) {
         const [, field, expected] = containsMatch;
-        if (field === 'name') return element.name.includes(expected);
-        if (field === 'label') return element.label.includes(expected);
-        return element.type.includes(expected);
+        if (field === 'name') return element => element.name.includes(expected);
+        if (field === 'label') return element => element.label.includes(expected);
+        return element => element.type.includes(expected);
     }
 
-    return false;
+    return neverMatches;
 }
 
-function matchIosClassChain(element: ParsedElement, classChain: string): boolean {
+function compileIosClassChain(classChain: string): ElementMatcher {
     const classChainMatch = classChain.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
-    if (!classChainMatch) return false;
+    if (!classChainMatch) return neverMatches;
 
     const targetType = classChainMatch[1];
     const predicate = classChainMatch[2];
-    if (element.type !== targetType) return false;
+    const predicateMatcher = predicate ? compileIosPredicate(predicate) : null;
 
-    if (!predicate) return true;
-    return matchIosPredicate(element, predicate);
+    return element => {
+        if (element.type !== targetType) return false;
+        return predicateMatcher ? predicateMatcher(element) : true;
+    };
 }
 
-function matchAndroidUiAutomator(element: ParsedElement, value: string): boolean {
-    const matches = [...value.matchAll(/\.(\w+)\("(.+?)"\)/g)];
-    if (matches.length === 0) return false;
+function compileAndroidUiAutomator(value: string): ElementMatcher {
+    const calls = [...value.matchAll(/\.(\w+)\("(.+?)"\)/g)].map(([, method, expected]) => ({ method, expected }));
+    if (calls.length === 0) return neverMatches;
 
-    return matches.every(([, method, expected]) => {
+    return element => calls.every(({ method, expected }) => {
         if (method === 'resourceId') return element.resourceId === expected;
         if (method === 'description') return element.contentDesc === expected;
         if (method === 'text') return element.text === expected || element.label === expected;
@@ -81,46 +83,56 @@ function matchAndroidUiAutomator(element: ParsedElement, value: string): boolean
     });
 }
 
-function matchSimpleXPath(element: ParsedElement, xpath: string): boolean {
-    if (xpath === element.xpath) return true;
+function compileSimpleXPath(xpath: string): ElementMatcher {
+    const attrConditions = [...xpath.matchAll(/@(\w+)="([^"]+)"/g)].map(([, attribute, expected]) => ({ attribute, expected }));
 
-    const attrMatches = [...xpath.matchAll(/@(\w+)="([^"]+)"/g)];
-    if (attrMatches.length === 0) return false;
+    return element => {
+        if (xpath === element.xpath) return true;
+        if (attrConditions.length === 0) return false;
 
-    return attrMatches.every(([, attribute, expected]) => {
-        if (attribute === 'type') return element.type === expected;
-        if (attribute === 'name') return element.name === expected;
-        if (attribute === 'label') return element.label === expected;
-        if (attribute === 'text') return element.text === expected;
-        if (attribute === 'resource-id') return element.resourceId === expected;
-        if (attribute === 'content-desc') return element.contentDesc === expected;
-        return element.attributes[attribute] === expected;
-    });
+        return attrConditions.every(({ attribute, expected }) => {
+            if (attribute === 'type') return element.type === expected;
+            if (attribute === 'name') return element.name === expected;
+            if (attribute === 'label') return element.label === expected;
+            if (attribute === 'text') return element.text === expected;
+            if (attribute === 'resource-id') return element.resourceId === expected;
+            if (attribute === 'content-desc') return element.contentDesc === expected;
+            return element.attributes[attribute] === expected;
+        });
+    };
 }
 
-export function candidateMatchesElement(candidate: SelectorCandidate, element: ParsedElement): boolean {
+/**
+ * Parse a candidate once into a reusable matcher so matching against many
+ * elements (or many snapshots) doesn't re-run the regex parsing per element.
+ */
+export function compileCandidateMatcher(candidate: SelectorCandidate): ElementMatcher {
     switch (candidate.strategy) {
         case 'id':
-            return element.resourceId === candidate.value;
+            return element => element.resourceId === candidate.value;
         case 'accessibility id':
-            return (
+            return element => (
                 element.name === candidate.value ||
                 element.label === candidate.value ||
                 element.contentDesc === candidate.value
             );
         case 'class name':
-            return element.type === candidate.value;
+            return element => element.type === candidate.value;
         case 'xpath':
-            return matchSimpleXPath(element, candidate.value);
+            return compileSimpleXPath(candidate.value);
         case '-ios predicate string':
-            return matchIosPredicate(element, candidate.value);
+            return compileIosPredicate(candidate.value);
         case '-ios class chain':
-            return matchIosClassChain(element, candidate.value);
+            return compileIosClassChain(candidate.value);
         case '-android uiautomator':
-            return matchAndroidUiAutomator(element, candidate.value);
+            return compileAndroidUiAutomator(candidate.value);
         default:
-            return false;
+            return neverMatches;
     }
+}
+
+export function candidateMatchesElement(candidate: SelectorCandidate, element: ParsedElement): boolean {
+    return compileCandidateMatcher(candidate)(element);
 }
 
 export function rankSelectorCandidates(
@@ -132,7 +144,11 @@ export function rankSelectorCandidates(
         const reasons: SelectorReason[] = ['BASE_STRATEGY_PRIORITY'];
         let score = baseScoreByStrategy[candidate.strategy] ?? 50;
 
-        const matchCount = allElements.filter(element => candidateMatchesElement(candidate, element)).length;
+        const matches = compileCandidateMatcher(candidate);
+        let matchCount = 0;
+        for (const element of allElements) {
+            if (matches(element)) matchCount++;
+        }
 
         if (matchCount === 1) {
             score += 25;

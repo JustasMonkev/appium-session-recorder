@@ -10,7 +10,7 @@ const App: Component = () => {
 
     // Filter to only actions (interactions with screenshots)
     const actions = createMemo(() =>
-        interactions().filter(i => i.screenshot)
+        interactions().filter(i => i.screenshotUrl)
     );
 
     // Get the current action

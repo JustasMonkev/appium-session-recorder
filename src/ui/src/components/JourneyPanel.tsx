@@ -64,10 +64,10 @@ export const JourneyPanel: Component<JourneyPanelProps> = (props) => {
                         </Show>
                     </div>
 
-                    <Show when={currentAction()!.screenshot}>
+                    <Show when={currentAction()!.screenshotUrl}>
                         <div class="journey-hero-screen">
                             <img
-                                src={`data:image/png;base64,${currentAction()!.screenshot}`}
+                                src={currentAction()!.screenshotUrl}
                                 alt={`Action ${currentJourneyIndex() + 1} screenshot`}
                                 class="journey-hero-image"
                             />
@@ -92,11 +92,12 @@ export const JourneyPanel: Component<JourneyPanelProps> = (props) => {
                                 onClick={() => props.onSelectAction?.(entry.originalIndex)}
                             >
                                 <div class="journey-thumb-frame">
-                                    <Show when={entry.action.screenshot}>
+                                    <Show when={entry.action.screenshotUrl}>
                                         <img
-                                            src={`data:image/png;base64,${entry.action.screenshot}`}
+                                            src={entry.action.screenshotUrl}
                                             alt={`Action ${index() + 1}`}
                                             class="journey-thumb-image"
+                                            loading="lazy"
                                         />
                                     </Show>
                                 </div>

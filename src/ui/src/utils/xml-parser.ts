@@ -1,6 +1,17 @@
-import type { ParsedElement } from '../types';
+import type { Interaction, ParsedElement } from '../types';
 
-export function parseXmlSource(xmlString: string): ParsedElement[] {
+export type ParsedXmlDocument = {
+    doc: Document;
+    elements: ParsedElement[];
+};
+
+/**
+ * Parse XML into both the DOM document and the flat element list. Keeping the
+ * document around lets callers evaluate XPath against the same nodes stored on
+ * each ParsedElement, so matches can be compared by identity instead of
+ * deep-comparing nodes across two separately parsed documents.
+ */
+export function parseXmlDocument(xmlString: string): ParsedXmlDocument {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlString, 'text/xml');
     const elements: ParsedElement[] = [];
@@ -42,6 +53,28 @@ export function parseXmlSource(xmlString: string): ParsedElement[] {
 
     if (doc.documentElement) {
         traverse(doc.documentElement);
+    }
+    return { doc, elements };
+}
+
+export function parseXmlSource(xmlString: string): ParsedElement[] {
+    return parseXmlDocument(xmlString).elements;
+}
+
+const parseCache = new WeakMap<Interaction, ParsedElement[]>();
+
+/**
+ * Parse an interaction's XML source, caching per interaction object so
+ * repeated lookups (e.g. stability checks across many snapshots) don't
+ * re-parse the same source on every recomputation.
+ */
+export function getParsedElements(interaction: Interaction): ParsedElement[] {
+    if (!interaction.source) return [];
+
+    let elements = parseCache.get(interaction);
+    if (!elements) {
+        elements = parseXmlSource(interaction.source);
+        parseCache.set(interaction, elements);
     }
     return elements;
 }

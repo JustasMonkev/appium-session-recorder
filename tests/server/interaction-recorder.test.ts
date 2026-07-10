@@ -178,10 +178,13 @@ describe('InteractionRecorder', () => {
             });
 
             expect(listener).toHaveBeenCalledTimes(1);
-            expect(listener).toHaveBeenCalledWith({
-                type: 'interaction',
-                data: interaction,
-            });
+            expect(listener).toHaveBeenCalledWith(
+                {
+                    type: 'interaction',
+                    data: interaction,
+                },
+                JSON.stringify({ type: 'interaction', data: interaction }),
+            );
         });
     });
 
@@ -193,12 +196,10 @@ describe('InteractionRecorder', () => {
             });
 
             recorder.updateInteraction(interaction.id, {
-                screenshot: 'base64screenshot',
                 source: '<xml>source</xml>',
             });
 
             const history = recorder.getHistory();
-            expect(history[0].screenshot).toBe('base64screenshot');
             expect(history[0].source).toBe('<xml>source</xml>');
         });
 
@@ -211,7 +212,7 @@ describe('InteractionRecorder', () => {
 
             recorder.on(listener);
             recorder.updateInteraction(interaction.id, {
-                screenshot: 'base64screenshot',
+                source: '<xml>source</xml>',
             });
 
             expect(listener).toHaveBeenCalledTimes(1);
@@ -219,9 +220,10 @@ describe('InteractionRecorder', () => {
                 expect.objectContaining({
                     type: 'interaction',
                     data: expect.objectContaining({
-                        screenshot: 'base64screenshot',
+                        source: '<xml>source</xml>',
                     }),
-                })
+                }),
+                expect.any(String),
             );
         });
 
@@ -230,7 +232,7 @@ describe('InteractionRecorder', () => {
             recorder.on(listener);
 
             recorder.updateInteraction(999, {
-                screenshot: 'base64screenshot',
+                source: '<xml>source</xml>',
             });
 
             expect(listener).not.toHaveBeenCalled();
@@ -247,12 +249,86 @@ describe('InteractionRecorder', () => {
             });
 
             recorder.updateInteraction(interaction1.id, {
-                screenshot: 'base64screenshot',
+                source: '<xml>source</xml>',
             });
 
             const history = recorder.getHistory();
-            expect(history[0].screenshot).toBe('base64screenshot');
-            expect(history[1].screenshot).toBeUndefined();
+            expect(history[0].source).toBe('<xml>source</xml>');
+            expect(history[1].source).toBeUndefined();
+        });
+    });
+
+    describe('attachCapturedState', () => {
+        const base64Png = Buffer.from('fake-png-bytes').toString('base64');
+
+        it('should store screenshot and expose it via screenshotUrl', () => {
+            const interaction = recorder.recordInteraction({
+                method: 'POST',
+                path: '/session/123/element',
+            });
+
+            recorder.attachCapturedState(interaction.id, {
+                screenshot: base64Png,
+                source: '<xml>source</xml>',
+            });
+
+            const history = recorder.getHistory();
+            expect(history[0].screenshotUrl).toMatch(
+                new RegExp(`^/_recorder/api/screenshot/${interaction.id}\\?v=\\d+$`),
+            );
+            expect(history[0].source).toBe('<xml>source</xml>');
+            expect(recorder.getScreenshot(interaction.id)).toEqual(Buffer.from('fake-png-bytes'));
+        });
+
+        it('should not embed base64 screenshot data in the interaction payload', () => {
+            const interaction = recorder.recordInteraction({
+                method: 'POST',
+                path: '/session/123/element',
+            });
+
+            recorder.attachCapturedState(interaction.id, { screenshot: base64Png });
+
+            expect(JSON.stringify(recorder.getHistory())).not.toContain(base64Png);
+        });
+
+        it('should handle null screenshot and source', () => {
+            const interaction = recorder.recordInteraction({
+                method: 'POST',
+                path: '/session/123/element',
+            });
+
+            recorder.attachCapturedState(interaction.id, { screenshot: null, source: null });
+
+            const history = recorder.getHistory();
+            expect(history[0].screenshotUrl).toBeUndefined();
+            expect(history[0].source).toBeUndefined();
+            expect(recorder.getScreenshot(interaction.id)).toBeUndefined();
+        });
+
+        it('should emit a single update event', () => {
+            const listener = vi.fn();
+            const interaction = recorder.recordInteraction({
+                method: 'POST',
+                path: '/session/123/element',
+            });
+
+            recorder.on(listener);
+            recorder.attachCapturedState(interaction.id, {
+                screenshot: base64Png,
+                source: '<xml>source</xml>',
+            });
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('should ignore unknown interaction ids', () => {
+            const listener = vi.fn();
+            recorder.on(listener);
+
+            recorder.attachCapturedState(999, { screenshot: base64Png });
+
+            expect(listener).not.toHaveBeenCalled();
+            expect(recorder.getScreenshot(999)).toBeUndefined();
         });
     });
 
@@ -308,10 +384,67 @@ describe('InteractionRecorder', () => {
 
             recorder.clearHistory();
 
-            expect(listener).toHaveBeenCalledWith({
-                type: 'clear',
-                data: null,
+            expect(listener).toHaveBeenCalledWith(
+                {
+                    type: 'clear',
+                    data: null,
+                },
+                JSON.stringify({ type: 'clear', data: null }),
+            );
+        });
+
+        it('should clear stored screenshots', () => {
+            const interaction = recorder.recordInteraction({ method: 'POST', path: '/path1' });
+            recorder.attachCapturedState(interaction.id, {
+                screenshot: Buffer.from('png').toString('base64'),
             });
+            expect(recorder.getScreenshot(interaction.id)).toBeDefined();
+
+            recorder.clearHistory();
+
+            expect(recorder.getScreenshot(interaction.id)).toBeUndefined();
+        });
+    });
+
+    describe('history cap', () => {
+        it('should evict oldest interactions (and their screenshots) beyond the cap', () => {
+            const first = recorder.recordInteraction({ method: 'POST', path: '/path-first' });
+            recorder.attachCapturedState(first.id, {
+                screenshot: Buffer.from('png').toString('base64'),
+            });
+
+            for (let i = 0; i < 500; i++) {
+                recorder.recordInteraction({ method: 'POST', path: `/path-${i}` });
+            }
+
+            const history = recorder.getHistory();
+            expect(history).toHaveLength(500);
+            expect(history[0].path).not.toBe('/path-first');
+            expect(recorder.getScreenshot(first.id)).toBeUndefined();
+        });
+
+        it('should emit an evict event so connected clients drop evicted interactions', () => {
+            const first = recorder.recordInteraction({ method: 'POST', path: '/path-first' });
+            for (let i = 0; i < 499; i++) {
+                recorder.recordInteraction({ method: 'POST', path: `/path-${i}` });
+            }
+
+            const listener = vi.fn();
+            recorder.on(listener);
+
+            recorder.recordInteraction({ method: 'POST', path: '/path-overflow' });
+
+            expect(listener).toHaveBeenCalledTimes(2);
+            expect(listener).toHaveBeenNthCalledWith(
+                1,
+                expect.objectContaining({ type: 'interaction' }),
+                expect.any(String),
+            );
+            expect(listener).toHaveBeenNthCalledWith(
+                2,
+                { type: 'evict', data: { ids: [first.id] } },
+                JSON.stringify({ type: 'evict', data: { ids: [first.id] } }),
+            );
         });
     });
 

@@ -14,7 +14,7 @@ export type Interaction = {
     method: string;
     path: string;
     body?: any;
-    screenshot?: string;
+    screenshotUrl?: string;
     source?: string;
     elementInfo?: {
         using: string;

@@ -118,7 +118,9 @@ export function createSessionMiddleware(
         const interaction = recorder.recordInteraction(interactionData);
 
         console.log(`[${interaction.id}] ${req.method} ${req.originalUrl} (${actionKind})`);
-        if (interaction.body) {
+        // Pretty-printing request bodies on every proxied command adds latency
+        // to the hot path; opt in via RECORDER_DEBUG when debugging.
+        if (process.env.RECORDER_DEBUG && interaction.body) {
             console.log('Body:', JSON.stringify(interaction.body, null, 2));
         }
 
@@ -137,10 +139,7 @@ export function createSessionMiddleware(
 
                 try {
                     const state = await appiumClient.captureState(sessionId);
-                    recorder.updateInteraction(interaction.id, {
-                        screenshot: state.screenshot,
-                        source: state.source,
-                    });
+                    recorder.attachCapturedState(interaction.id, state);
                     console.log(`[${interaction.id}] State captured (screenshot + source)`);
                 } catch (error) {
                     console.error(`[${interaction.id}] Failed to capture state`, error);

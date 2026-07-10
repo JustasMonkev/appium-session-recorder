@@ -25,11 +25,16 @@ export type Interaction = {
     method: string;
     path: string;
     body?: any;
-    screenshot?: string;  // base64
-    source?: string;      // XML
+    screenshotUrl?: string;  // served by /_recorder/api/screenshot/:id
+    source?: string;         // XML
     elementInfo?: ElementInfo;
     sessionId?: string;
     actionKind?: ActionKind;
+};
+
+export type CapturedState = {
+    screenshot?: string | null;  // base64 PNG from Appium
+    source?: string | null;      // XML
 };
 
 export type AppiumResponse = {
@@ -38,9 +43,11 @@ export type AppiumResponse = {
     status?: number;
 };
 
-export type ServerEventType = 'interaction' | 'clear';
+export type ServerEvent =
+    | { type: 'interaction'; data: Interaction }
+    | { type: 'clear'; data: null }
+    // Emitted when old interactions are evicted by the history cap so
+    // connected clients can drop them too.
+    | { type: 'evict'; data: { ids: number[] } };
 
-export type ServerEvent = {
-    type: ServerEventType;
-    data: Interaction | null;
-};
+export type ServerEventType = ServerEvent['type'];

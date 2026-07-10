@@ -1,7 +1,7 @@
-import { type Component, createSignal, Show, For } from 'solid-js';
+import { type Component, createSignal, createMemo, Show, For } from 'solid-js';
 import { Dialog } from '@kobalte/core/dialog';
 import type { Interaction } from '../types';
-import { parseXmlSource } from '../utils/xml-parser';
+import { parseXmlDocument, type ParsedXmlDocument } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
 import type { ParsedElement, Locator } from '../types';
 import './Inspector.css';
@@ -19,10 +19,13 @@ export const Inspector: Component<InspectorProps> = (props) => {
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
     const [showSource, setShowSource] = createSignal(false);
 
-    const parsedElements = () => {
-        if (!props.interaction?.source) return [];
-        return parseXmlSource(props.interaction.source);
-    };
+    // Parse the source once per interaction instead of on every query
+    const parsedSource = createMemo<ParsedXmlDocument | null>(() => {
+        if (!props.interaction?.source) return null;
+        return parseXmlDocument(props.interaction.source);
+    });
+
+    const parsedElements = () => parsedSource()?.elements ?? [];
 
     const runQuery = () => {
         const strategy = queryStrategy();
@@ -40,27 +43,27 @@ export const Inspector: Component<InspectorProps> = (props) => {
             case 'class name':
                 found = elements.filter(el => el.type === value);
                 break;
-            case 'xpath':
-                // Properly evaluate XPath against the XML source
-                if (props.interaction?.source) {
+            case 'xpath': {
+                // Evaluate against the already-parsed document so matched nodes
+                // can be compared by identity with the parsed elements' nodes
+                const doc = parsedSource()?.doc;
+                if (doc) {
                     try {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(props.interaction.source, 'text/xml');
                         const result = doc.evaluate(value, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-                        const matchedNodes: Element[] = [];
+                        const matchedNodes = new Set<Node>();
                         for (let i = 0; i < result.snapshotLength; i++) {
                             const node = result.snapshotItem(i);
                             if (node && node.nodeType === 1) {
-                                matchedNodes.push(node as Element);
+                                matchedNodes.add(node);
                             }
                         }
-                        // Match found nodes back to parsed elements
-                        found = elements.filter(el => matchedNodes.some(node => el.node.isEqualNode(node)));
+                        found = elements.filter(el => matchedNodes.has(el.node));
                     } catch (e) {
                         console.error('Invalid XPath expression:', e);
                     }
                 }
                 break;
+            }
             case '-ios predicate string':
                 // iOS predicate string matching (simplified attribute matching)
                 found = elements.filter(el => {
@@ -151,9 +154,9 @@ export const Inspector: Component<InspectorProps> = (props) => {
 
                     <div class="inspector-panel">
                         <div class="inspector-left">
-                            <Show when={props.interaction?.screenshot}>
+                            <Show when={props.interaction?.screenshotUrl}>
                                 <img
-                                    src={`data:image/png;base64,${props.interaction!.screenshot}`}
+                                    src={props.interaction!.screenshotUrl}
                                     alt="Screenshot"
                                     class="inspector-screenshot"
                                 />

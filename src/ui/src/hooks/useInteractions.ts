@@ -38,6 +38,12 @@ export function useInteractions() {
                         return [...prev, event.data];
                     }
                 });
+            } else if (event.type === 'evict') {
+                // Server evicted old interactions past its history cap;
+                // drop them here too so client memory stays bounded and we
+                // don't keep cards whose screenshot URLs now 404
+                const evicted = new Set<number>(event.data.ids);
+                setInteractions(prev => prev.filter(i => !evicted.has(i.id)));
             } else if (event.type === 'clear') {
                 setInteractions([]);
             }
@@ -57,11 +63,14 @@ export function useInteractions() {
         await loadHistory();
     }
 
-    const actions = interactions().filter(i => i.screenshot);
-    const stats = () => ({
-        total: interactions().length,
-        actions: actions.length,
-    });
+    const stats = () => {
+        const list = interactions();
+        let actions = 0;
+        for (const interaction of list) {
+            if (interaction.screenshotUrl) actions++;
+        }
+        return { total: list.length, actions };
+    };
 
     return {
         interactions,

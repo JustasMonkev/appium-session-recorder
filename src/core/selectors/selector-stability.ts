@@ -1,5 +1,5 @@
 import type { ParsedElement, SelectorCandidate } from '../types';
-import { candidateMatchesElement } from './score-candidates';
+import { compileCandidateMatcher } from './score-candidates';
 
 export type StabilityResult = {
     candidate: SelectorCandidate;
@@ -29,10 +29,14 @@ export function evaluateSelectorStability(
     const results: StabilityResult[] = candidates.map((candidate) => {
         let stableSteps = 0;
         let firstFailureStep = 0;
+        const matches = compileCandidateMatcher(candidate);
 
         for (let i = 0; i < snapshots.length; i++) {
             const elements = snapshots[i];
-            const matchCount = elements.filter(el => candidateMatchesElement(candidate, el)).length;
+            let matchCount = 0;
+            for (const el of elements) {
+                if (matches(el)) matchCount++;
+            }
 
             if (matchCount === 1) {
                 stableSteps++;
