@@ -4,7 +4,7 @@ import { computeScale, elementToOverlayRect, renderedToSource, hitTest } from '.
 import type { ScaleFactor } from '../utils/element-geometry';
 
 type ScreenshotOverlayProps = {
-    screenshot: string;
+    screenshotUrl: string;
     elements: ParsedElement[];
     selectedElement: ParsedElement | null;
     hoveredElement: ParsedElement | null;
@@ -116,7 +116,7 @@ export const ScreenshotOverlay: Component<ScreenshotOverlayProps> = (props) => {
         >
             <img
                 ref={setImgRef}
-                src={`data:image/png;base64,${props.screenshot}`}
+                src={props.screenshotUrl}
                 alt="Screenshot"
                 class="screenshot-image"
             />

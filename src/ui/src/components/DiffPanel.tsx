@@ -1,6 +1,7 @@
 import { type Component, createMemo, createSignal, For, Show } from 'solid-js';
 import type { DiffRow, Interaction, DiffSummary } from '../types';
 import { computeDiffSummary } from '../utils/diff';
+import { formatXml } from '../utils/format-xml';
 import './DiffPanel.css';
 
 type DiffPanelProps = {
@@ -38,35 +39,11 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
         if (!row.previousText && row.currentText) return 'diff-row diff-row-inserted';
         return 'diff-row diff-row-equal';
     };
-    const formatXmlForCopy = (xml: string | undefined) => {
-        if (!xml) return '';
-
-        let formatted = '';
-        let indent = 0;
-        const lines = xml.replace(/></g, '>\n<').split('\n');
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            if (trimmed.startsWith('</')) {
-                indent = Math.max(0, indent - 1);
-            }
-
-            formatted += `${'  '.repeat(indent)}${trimmed}\n`;
-
-            if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.endsWith('/>') && !trimmed.includes('</')) {
-                indent++;
-            }
-        }
-
-        return formatted;
-    };
     const copyXml = async (side: 'previous' | 'current') => {
         const xml = side === 'previous' ? props.previous?.source : props.current.source;
         if (!xml) return;
 
-        await navigator.clipboard.writeText(formatXmlForCopy(xml));
+        await navigator.clipboard.writeText(formatXml(xml));
         setCopiedSide(side);
         setTimeout(() => setCopiedSide((value) => value === side ? null : value), 2000);
     };
@@ -108,9 +85,9 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
                 <div class="diff-preview-grid">
                     <div class="diff-preview-card">
                         <div class="diff-label">Previous</div>
-                        <Show when={props.previous!.screenshot}>
+                        <Show when={props.previous!.screenshotUrl}>
                             <img
-                                src={`data:image/png;base64,${props.previous!.screenshot}`}
+                                src={props.previous!.screenshotUrl}
                                 alt="Previous screenshot"
                                 class="diff-screenshot-img"
                             />
@@ -118,9 +95,9 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
                     </div>
                     <div class="diff-preview-card">
                         <div class="diff-label">Current</div>
-                        <Show when={props.current.screenshot}>
+                        <Show when={props.current.screenshotUrl}>
                             <img
-                                src={`data:image/png;base64,${props.current.screenshot}`}
+                                src={props.current.screenshotUrl}
                                 alt="Current screenshot"
                                 class="diff-screenshot-img"
                             />

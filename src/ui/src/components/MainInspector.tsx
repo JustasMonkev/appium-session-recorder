@@ -1,7 +1,8 @@
 import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup, createMemo } from 'solid-js';
 import type { Interaction } from '../types';
-import { parseXmlSource } from '../utils/xml-parser';
+import { parseXmlDocument, type ParsedXmlDocument } from '../utils/xml-parser';
 import { generateLocators } from '../utils/locators';
+import { formatXml } from '../utils/format-xml';
 import { DiffPanel } from './DiffPanel';
 import { JourneyPanel } from './JourneyPanel';
 import { SelectorStability } from './SelectorStability';
@@ -35,10 +36,13 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         }
     });
 
-    const parsedElements = () => {
-        if (!props.interaction?.source) return [];
-        return parseXmlSource(props.interaction.source);
-    };
+    // Parse the source once per interaction instead of on every query
+    const parsedSource = createMemo<ParsedXmlDocument | null>(() => {
+        if (!props.interaction?.source) return null;
+        return parseXmlDocument(props.interaction.source);
+    });
+
+    const parsedElements = () => parsedSource()?.elements ?? [];
 
     const futureActions = createMemo(() => {
         const all = props.allActions || [];
@@ -65,25 +69,27 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
             case 'class name':
                 found = elements.filter(el => el.type === value);
                 break;
-            case 'xpath':
-                if (props.interaction?.source) {
+            case 'xpath': {
+                // Evaluate against the already-parsed document so matched nodes
+                // can be compared by identity with the parsed elements' nodes
+                const doc = parsedSource()?.doc;
+                if (doc) {
                     try {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(props.interaction.source, 'text/xml');
                         const result = doc.evaluate(value, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-                        const matchedNodes: Element[] = [];
+                        const matchedNodes = new Set<Node>();
                         for (let i = 0; i < result.snapshotLength; i++) {
                             const node = result.snapshotItem(i);
                             if (node && node.nodeType === 1) {
-                                matchedNodes.push(node as Element);
+                                matchedNodes.add(node);
                             }
                         }
-                        found = elements.filter(el => matchedNodes.some(node => el.node.isEqualNode(node)));
+                        found = elements.filter(el => matchedNodes.has(el.node));
                     } catch (e) {
                         console.error('Invalid XPath expression:', e);
                     }
                 }
                 break;
+            }
             case '-ios predicate string':
                 found = elements.filter(el => {
                     const predicateLower = value.toLowerCase();
@@ -143,40 +149,19 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         setTimeout(() => setCopiedText(null), 2000);
     };
 
-    const locators = (): Locator[] => {
+    const locators = createMemo<Locator[]>(() => {
         const el = selectedElement();
         return el ? generateLocators(el) : [];
-    };
+    });
 
-    const formatXml = (xml: string) => {
-        // Simple XML formatting for better readability
-        let formatted = '';
-        let indent = 0;
-        const lines = xml.replace(/></g, '>\n<').split('\n');
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            if (trimmed.startsWith('</')) {
-                indent = Math.max(0, indent - 1);
-            }
-
-            formatted += '  '.repeat(indent) + trimmed + '\n';
-
-            if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.endsWith('/>') && !trimmed.includes('</')) {
-                indent++;
-            }
-        }
-
-        return formatted;
-    };
+    // Format once per interaction, not on every tab switch
+    const formattedXml = createMemo(() => formatXml(props.interaction?.source || ''));
 
     // Defense-in-depth: render XML as textContent (never HTML)
     createRenderEffect(() => {
         const el = xmlPreRef();
         if (!el) return;
-        el.textContent = formatXml(props.interaction?.source || '');
+        el.textContent = formattedXml();
     });
 
     return (
@@ -325,9 +310,9 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     <div class="content-area">
                         {/* Screenshot Section */}
                         <div class="screenshot-section">
-                            <Show when={props.interaction!.screenshot}>
+                            <Show when={props.interaction!.screenshotUrl}>
                                 <img
-                                    src={`data:image/png;base64,${props.interaction!.screenshot}`}
+                                    src={props.interaction!.screenshotUrl}
                                     alt="Screenshot"
                                     class="screenshot-image"
                                 />

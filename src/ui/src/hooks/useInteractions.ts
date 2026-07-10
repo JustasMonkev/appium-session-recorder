@@ -57,11 +57,14 @@ export function useInteractions() {
         await loadHistory();
     }
 
-    const actions = interactions().filter(i => i.screenshot);
-    const stats = () => ({
-        total: interactions().length,
-        actions: actions.length,
-    });
+    const stats = () => {
+        const list = interactions();
+        let actions = 0;
+        for (const interaction of list) {
+            if (interaction.screenshotUrl) actions++;
+        }
+        return { total: list.length, actions };
+    };
 
     return {
         interactions,

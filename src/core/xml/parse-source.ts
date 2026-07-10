@@ -179,10 +179,15 @@ export function parseSource(xmlString: string): ParsedSource {
 
     visit(rootTag, rootNode as XmlNode, '', 1);
 
-    const platform =
-        elements.find(element => element.platform === 'ios')?.platform ||
-        elements.find(element => element.platform === 'android')?.platform ||
-        'unknown';
+    // Single pass: iOS wins if present anywhere, otherwise Android if present.
+    let platform: Platform = 'unknown';
+    for (const element of elements) {
+        if (element.platform === 'ios') {
+            platform = 'ios';
+            break;
+        }
+        if (element.platform === 'android') platform = 'android';
+    }
 
     // Resolve any elements whose platform couldn't be detected locally to the
     // page-level platform. The elements are freshly-created local objects, so we

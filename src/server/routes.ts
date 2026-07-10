@@ -35,6 +35,19 @@ export function createRoutes(recorder: InteractionRecorder) {
         res.json(recorder.getHistory());
     });
 
+    // API: Serve captured screenshots as binary PNG. Screenshots are written
+    // once per interaction, so clients can cache them forever.
+    router.get('/_recorder/api/screenshot/:id', (req, res) => {
+        const screenshot = recorder.getScreenshot(Number(req.params.id));
+        if (!screenshot) {
+            res.status(404).json({ error: 'Screenshot not found' });
+            return;
+        }
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.end(screenshot);
+    });
+
     // API: Clear history
     router.delete('/_recorder/api/history', (_req, res) => {
         recorder.clearHistory();
@@ -50,9 +63,9 @@ export function createRoutes(recorder: InteractionRecorder) {
         // Send initial history
         res.write(`data: ${JSON.stringify({ type: 'init', data: recorder.getHistory() })}\n\n`);
 
-        // Listen for new interactions
-        const unsubscribe = recorder.on((event) => {
-            res.write(`data: ${JSON.stringify(event)}\n\n`);
+        // Listen for new interactions (payload is stringified once by the recorder)
+        const unsubscribe = recorder.on((_event, serialized) => {
+            res.write(`data: ${serialized}\n\n`);
         });
 
         // Clean up on close

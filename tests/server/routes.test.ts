@@ -163,11 +163,15 @@ describe('createRoutes', () => {
             const interaction = recorder.recordInteraction({ method: 'POST', path: '/test' });
             const afterRecordCount = res._written.length;
 
-            recorder.updateInteraction(interaction.id, { screenshot: 'base64data' });
+            recorder.attachCapturedState(interaction.id, {
+                screenshot: Buffer.from('png-bytes').toString('base64'),
+                source: '<xml/>',
+            });
 
             expect(res._written.length).toBe(afterRecordCount + 1);
             const eventData = JSON.parse(res._written[res._written.length - 1].replace('data: ', '').replace('\n\n', ''));
-            expect(eventData.data.screenshot).toBe('base64data');
+            expect(eventData.data.screenshotUrl).toBe(`/_recorder/api/screenshot/${interaction.id}`);
+            expect(eventData.data.source).toBe('<xml/>');
         });
 
         it('should stream clear events', () => {
@@ -204,6 +208,52 @@ describe('createRoutes', () => {
 
             // Should not receive new events
             expect(res._written.length).toBe(currentCount);
+        });
+    });
+
+    describe('GET /_recorder/api/screenshot/:id', () => {
+        function createScreenshotResponse() {
+            const res = createMockResponse() as any;
+            res._status = 200;
+            res._ended = null;
+            res.status = vi.fn((code: number) => {
+                res._status = code;
+                return res;
+            });
+            res.end = vi.fn((data?: any) => {
+                res._ended = data;
+                return res;
+            });
+            return res;
+        }
+
+        it('should serve stored screenshots as PNG with immutable caching', () => {
+            const interaction = recorder.recordInteraction({ method: 'POST', path: '/test' });
+            recorder.attachCapturedState(interaction.id, {
+                screenshot: Buffer.from('png-bytes').toString('base64'),
+            });
+
+            const handler = getRouteHandler('GET', '/_recorder/api/screenshot/:id');
+            expect(handler).not.toBeNull();
+
+            const req = createMockRequest({ params: { id: String(interaction.id) } } as any);
+            const res = createScreenshotResponse();
+
+            handler(req, res);
+
+            expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/png');
+            expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'public, max-age=31536000, immutable');
+            expect(res._ended).toEqual(Buffer.from('png-bytes'));
+        });
+
+        it('should return 404 for unknown screenshots', () => {
+            const handler = getRouteHandler('GET', '/_recorder/api/screenshot/:id');
+            const req = createMockRequest({ params: { id: '999' } } as any);
+            const res = createScreenshotResponse();
+
+            handler(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(404);
         });
     });
 

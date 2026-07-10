@@ -25,11 +25,16 @@ export type Interaction = {
     method: string;
     path: string;
     body?: any;
-    screenshot?: string;  // base64
-    source?: string;      // XML
+    screenshotUrl?: string;  // served by /_recorder/api/screenshot/:id
+    source?: string;         // XML
     elementInfo?: ElementInfo;
     sessionId?: string;
     actionKind?: ActionKind;
+};
+
+export type CapturedState = {
+    screenshot?: string | null;  // base64 PNG from Appium
+    source?: string | null;      // XML
 };
 
 export type AppiumResponse = {

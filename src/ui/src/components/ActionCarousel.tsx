@@ -10,7 +10,7 @@ type ActionCarouselProps = {
 
 export const ActionCarousel: Component<ActionCarouselProps> = (props) => {
     const actions = createMemo(() =>
-        props.interactions.filter(i => i.screenshot)
+        props.interactions.filter(i => i.screenshotUrl)
     );
 
     const currentAction = createMemo(() => actions()[props.currentIndex]);

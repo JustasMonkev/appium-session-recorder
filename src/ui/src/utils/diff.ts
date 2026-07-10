@@ -207,8 +207,12 @@ export function computeDiffSummary(prevXml: string | undefined, currXml: string 
     const segments = groupDiffSegments(lines);
     const prevElementCount = countElements(prevXml);
     const currElementCount = countElements(currXml);
-    const insertedLineCount = lines.filter((line) => line.type === 'insert').length;
-    const deletedLineCount = lines.filter((line) => line.type === 'delete').length;
+    let insertedLineCount = 0;
+    let deletedLineCount = 0;
+    for (const line of lines) {
+        if (line.type === 'insert') insertedLineCount++;
+        else if (line.type === 'delete') deletedLineCount++;
+    }
 
     return {
         segments,

@@ -9,7 +9,7 @@ type InteractionCardProps = {
 
 export const InteractionCard: Component<InteractionCardProps> = (props) => {
     const formattedTime = () => new Date(props.interaction.timestamp).toLocaleTimeString();
-    const isAction = () => !!props.interaction.screenshot;
+    const isAction = () => !!props.interaction.screenshotUrl;
 
     return (
         <div classList={{ 'interaction-card': true, 'action': isAction() }}>
@@ -42,12 +42,13 @@ export const InteractionCard: Component<InteractionCardProps> = (props) => {
                 </pre>
             </Show>
 
-            <Show when={props.interaction.screenshot}>
+            <Show when={props.interaction.screenshotUrl}>
                 <div class="screenshot-container">
                     <img
-                        src={`data:image/png;base64,${props.interaction.screenshot}`}
+                        src={props.interaction.screenshotUrl}
                         alt="Screenshot"
                         class="screenshot"
+                        loading="lazy"
                         onClick={props.onInspect}
                     />
                     <button class="inspect-btn" onClick={props.onInspect}>
