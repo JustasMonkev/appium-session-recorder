@@ -195,6 +195,13 @@ describe('AppiumCommandClient', () => {
         await expect(client.getSource('session')).rejects.toMatchObject({ code: 'APPIUM_INVALID_SOURCE' });
     });
 
+    it('preserves bounded HTML sources from web contexts', async () => {
+        const source = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><input disabled></body></html>';
+        fetchMock.mockResolvedValue(jsonResponse({ value: source }));
+
+        await expect(client.getSource('session')).resolves.toBe(source);
+    });
+
     it.each(['', 'a', 'A=', 'AA=', 'AB==', 'AAAA=', 'not base64!', 7, null])('rejects invalid screenshot payload %j', async screenshot => {
         fetchMock.mockResolvedValue(jsonResponse({ value: screenshot }));
 

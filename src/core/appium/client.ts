@@ -1,5 +1,5 @@
 import type { Point } from '../types';
-import { isXmlWithinLimits } from '../xml/xml-limits';
+import { isSourceWithinLimits } from '../xml/xml-limits';
 
 const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -233,8 +233,8 @@ export class AppiumCommandClient {
         if (typeof source !== 'string') {
             throw new AppiumCommandError('Appium source was not a string', 'APPIUM_INVALID_RESPONSE', 502, source);
         }
-        if (!isXmlWithinLimits(source)) {
-            throw new AppiumCommandError('Appium source was not valid bounded XML', 'APPIUM_INVALID_SOURCE', 502, source);
+        if (!isSourceWithinLimits(source)) {
+            throw new AppiumCommandError('Appium source was not valid bounded HTML/XML', 'APPIUM_INVALID_SOURCE', 502, source);
         }
         return source;
     }

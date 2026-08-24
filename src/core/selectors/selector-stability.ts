@@ -1,6 +1,8 @@
 import type { ParsedElement, SelectorCandidate } from '../types';
 import { compileCandidateMatcher } from './score-candidates';
 
+export const MAX_STABILITY_SNAPSHOTS = 10;
+
 export type StabilityResult = {
     candidate: SelectorCandidate;
     /** Number of consecutive steps where the selector resolves to exactly one element */

@@ -134,6 +134,60 @@ describe('viewer integration', () => {
         expect(container.textContent).toContain('Found 1 element(s)');
     });
 
+    it('matches iOS identifiers with the id query strategy', () => {
+        dispose = render(() => <MainInspector interaction={action(1)} />, container);
+        const strategy = container.querySelector<HTMLSelectElement>('.query-select');
+        const input = container.querySelector<HTMLInputElement>('.query-input');
+        if (!strategy || !input) throw new Error('Missing query controls');
+
+        strategy.value = 'id';
+        strategy.dispatchEvent(new Event('change', { bubbles: true }));
+        input.value = 'Login';
+        input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        button(container, 'Find').click();
+
+        expect(container.textContent).toContain('Found 1 element(s)');
+    });
+
+    it('hydrates retained future snapshots before stability analysis', async () => {
+        const summaries = Array.from({ length: 5 }, (_, index) => ({
+            ...action(index + 1),
+            source: undefined,
+            detailsTruncated: true,
+            detailsUrl: `/_recorder/api/interaction/${index + 1}`,
+        }));
+        const fetchMock = vi.fn<typeof fetch>().mockImplementation(async input => {
+            const id = Number(String(input).split('/').pop());
+            return new Response(JSON.stringify(action(id)));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+
+        stream.emit({ type: 'init', data: summaries });
+        button(container, 'Journey').click();
+        const firstJourneyStep = container.querySelector<HTMLButtonElement>('.journey-thumb');
+        if (!firstJourneyStep) throw new Error('Missing journey step');
+        firstJourneyStep.click();
+        button(container, 'Inspect').click();
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+        await vi.waitFor(() => expect(container.querySelector('.xml-source')?.textContent).toContain('AppiumAUT'));
+
+        const input = container.querySelector<HTMLInputElement>('.query-input');
+        if (!input) throw new Error('Missing selector input');
+        input.value = 'Login';
+        input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        button(container, 'Find').click();
+
+        expect(container.textContent).toContain('Selector Stability');
+        expect(container.textContent).toContain('4/4');
+        expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(expect.arrayContaining([
+            '/_recorder/api/interaction/2',
+            '/_recorder/api/interaction/3',
+        ]));
+    });
+
     it('bounds selector stability work across maximum-size future screens', () => {
         const selected = parseXmlSource('<hierarchy><node class="android.widget.Button" content-desc="target" /></hierarchy>')[1];
         const largeSource = `<hierarchy><node class="android.widget.Button" content-desc="target" />${
@@ -212,7 +266,7 @@ describe('viewer integration', () => {
         });
 
         await vi.waitFor(() => expect(container.textContent).toContain('Interaction details unavailable.'));
-        expect(container.textContent).toContain('Interaction details are required to view XML.');
+        expect(container.textContent).toContain('Interaction details are required to view page source.');
         expect(container.querySelector('.xml-source')).toBeNull();
         button(container, 'Retry').click();
         await vi.waitFor(() => expect(container.querySelector('.xml-source')?.textContent).toBe('<root>hydrated</root>'));
@@ -257,7 +311,7 @@ describe('viewer integration', () => {
         const oversized = `<root>${'x'.repeat(512 * 1024)}</root>`;
         dispose = render(() => <MainInspector interaction={action(1, oversized)} />, container);
 
-        expect(container.textContent).toContain('XML source is too large to display or inspect.');
+        expect(container.textContent).toContain('Page source is too large to display or inspect.');
         expect(container.textContent).not.toContain('x'.repeat(1_000));
     });
 

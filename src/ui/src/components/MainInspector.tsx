@@ -303,14 +303,14 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                         </div>
 
                         <div class="xml-section">
-                            <h3 class="section-title">XML Source</h3>
+                            <h3 class="section-title">Page Source</h3>
                             <Show
                                 when={!props.interaction!.detailsTruncated}
-                                fallback={<div class="capture-unavailable">Interaction details are required to view XML.</div>}
+                                fallback={<div class="capture-unavailable">Interaction details are required to view page source.</div>}
                             >
                                 <Show
                                     when={(props.interaction!.source?.length ?? 0) <= MAX_INSPECTOR_SOURCE_CHARS}
-                                    fallback={<div class="capture-unavailable">XML source is too large to display or inspect.</div>}
+                                    fallback={<div class="capture-unavailable">Page source is too large to display or inspect.</div>}
                                 >
                                     <pre class="xml-source">{props.interaction!.source ?? ''}</pre>
                                 </Show>

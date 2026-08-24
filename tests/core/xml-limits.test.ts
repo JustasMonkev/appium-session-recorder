@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+    isSourceWithinLimits,
     isXmlWithinLimits,
     MAX_XML_ATTRIBUTES,
+    MAX_XML_CHARS,
     MAX_XML_MARKUP_CHARS,
     MAX_XML_TOKENS,
 } from '../../src/core/xml/xml-limits';
 
 describe('XML resource limits', () => {
+    it('accepts bounded HTML page sources without weakening malformed XML rejection', () => {
+        expect(isSourceWithinLimits(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><input disabled></body></html>',
+        )).toBe(true);
+        expect(isSourceWithinLimits('<html><body>web context</body></html>')).toBe(true);
+        expect(isSourceWithinLimits('<a></b>')).toBe(false);
+        expect(isSourceWithinLimits('<html>\0</html>')).toBe(false);
+        expect(isSourceWithinLimits(`<html>${'x'.repeat(MAX_XML_CHARS)}</html>`)).toBe(false);
+    });
+
     it('accepts Appium XML with quoted delimiters, comments, and CDATA', () => {
         expect(isXmlWithinLimits(
             '<Root value="1 > 0"><!-- <ignored /> --><![CDATA[<ignored />]]><Item /></Root>',

@@ -277,6 +277,16 @@ describe('InteractionRecorder', () => {
             expect(JSON.stringify(recorder.getHistory())).not.toContain(base64Png);
         });
 
+        it('should retain bounded HTML sources from web contexts', () => {
+            const source = '<!DOCTYPE html><html><body><input disabled></body></html>';
+            const interaction = recorder.recordInteraction({ method: 'POST', path: '/action' });
+
+            recorder.attachCapturedState(interaction.id, { source });
+
+            expect(interaction.source).toBe(source);
+            expect(interaction.captureStatus).toBe('partial');
+        });
+
         it('should handle null screenshot and source', () => {
             const interaction = recorder.recordInteraction({
                 method: 'POST',

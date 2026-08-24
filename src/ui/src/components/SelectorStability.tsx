@@ -2,11 +2,13 @@ import { type Component, createMemo, Show, For } from 'solid-js';
 import type { Interaction, ParsedElement } from '../types';
 import type { SelectorCandidate } from '../../../core/types';
 import { getParsedElements } from '../utils/xml-parser';
-import { evaluateSelectorStability } from '../../../core/selectors/selector-stability';
+import {
+    evaluateSelectorStability,
+    MAX_STABILITY_SNAPSHOTS,
+} from '../../../core/selectors/selector-stability';
 import { inspectXml } from '../../../core/xml/xml-limits';
 import './SelectorStability.css';
 
-const MAX_STABILITY_SNAPSHOTS = 10;
 const MAX_STABILITY_ELEMENTS = 2_000;
 const MAX_STABILITY_SOURCE_CHARS = 512 * 1024;
 

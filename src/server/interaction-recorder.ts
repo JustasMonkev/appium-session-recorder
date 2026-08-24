@@ -1,5 +1,5 @@
 import type { CapturedState, Interaction, ServerEvent } from './types';
-import { isXmlWithinLimits } from '../core/xml/xml-limits';
+import { isSourceWithinLimits } from '../core/xml/xml-limits';
 
 const MAX_HISTORY = 500;
 const MAX_RETAINED_BYTES = 100 * 1024 * 1024;
@@ -70,7 +70,7 @@ export class InteractionRecorder {
         }
         if (
             state.source
-            && (state.source === this.validatedSource?.value || isXmlWithinLimits(state.source))
+            && (state.source === this.validatedSource?.value || isSourceWithinLimits(state.source))
         ) {
             interaction.source = state.source;
             this.validatedSource = { id, value: state.source };

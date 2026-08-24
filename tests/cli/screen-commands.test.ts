@@ -47,6 +47,25 @@ describe('screen commands', () => {
         });
     });
 
+    it('preserves bounded HTML sources for web-context commands', async () => {
+        const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><input disabled></body></html>';
+        const screenshot = Buffer.from('png').toString('base64');
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async input =>
+            String(input).endsWith('/source')
+                ? jsonResponse({ value: html })
+                : jsonResponse({ value: screenshot })
+        );
+
+        await expect(runScreenSnapshot([
+            '--appium-url', 'http://127.0.0.1:4723',
+            '--session-id', 'web-session',
+        ])).resolves.toMatchObject({ result: { source: html, screenshot } });
+        await expect(runScreenElements([
+            '--appium-url', 'http://127.0.0.1:4723',
+            '--session-id', 'web-session',
+        ])).resolves.toMatchObject({ command: 'screen.elements' });
+    });
+
     it('filters actionable elements before applying the result limit', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ value: source }));
 

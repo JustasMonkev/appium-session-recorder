@@ -61,6 +61,13 @@ describe('rankSelectorCandidates', () => {
         expect(ranked[1].reasons).toContain('MULTIPLE_MATCHES');
     });
 
+    it('matches iOS id selectors against the normalized accessibility identifier', () => {
+        const target = createElement({ name: 'loginBtn', resourceId: '' });
+        const candidate: SelectorCandidate = { strategy: 'id', value: 'loginBtn', platform: 'ios' };
+
+        expect(rankSelectorCandidates(target, [target], [candidate])[0].matchCount).toBe(1);
+    });
+
     it('applies dynamic token penalty', () => {
         const target = createElement({ name: 'user_123456789' });
         const candidates: SelectorCandidate[] = [

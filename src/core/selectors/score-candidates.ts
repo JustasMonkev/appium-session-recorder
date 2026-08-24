@@ -124,7 +124,9 @@ function compileSimpleXPath(xpath: string): ElementMatcher {
 export function compileCandidateMatcher(candidate: SelectorCandidate): ElementMatcher {
     switch (candidate.strategy) {
         case 'id':
-            return element => element.resourceId === candidate.value;
+            return candidate.platform === 'ios'
+                ? element => element.name === candidate.value
+                : element => element.resourceId === candidate.value;
         case 'accessibility id':
             return candidate.platform === 'android'
                 ? element => element.contentDesc === candidate.value

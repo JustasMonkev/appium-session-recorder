@@ -265,6 +265,12 @@ export function isXmlWithinLimits(xml: string): boolean {
     return inspectXml(xml) !== undefined;
 }
 
+export function isSourceWithinLimits(source: string): boolean {
+    if (source.length > MAX_XML_CHARS) return false;
+    const html = /^\s*(?:<!doctype\s+html(?:\s[^>]*)?>\s*)?<html(?:\s|>)/i.test(source);
+    return html ? !hasInvalidRawCharacter(source) : isXmlWithinLimits(source);
+}
+
 export type XmlToken = {
     kind: 'open' | 'close' | 'self' | 'text' | 'comment' | 'cdata' | 'instruction';
     value: string;

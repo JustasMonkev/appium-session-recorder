@@ -5,7 +5,7 @@ A local Appium proxy and JSON-first automation CLI. It records actions, screensh
 ## Features
 
 - Records Appium actions and associates element actions with the selector that resolved them.
-- Captures screenshots and XML source after successful actions.
+- Captures screenshots and HTML/XML page source after successful actions.
 - Streams updates to a browser viewer with Server-Sent Events.
 - Inspects XML, tests selectors, compares screens, summarizes journeys, and checks selector stability.
 - Provides scriptable `session`, `screen`, `selectors`, and `drive` commands.
@@ -180,7 +180,7 @@ The build bundles the CLI for Bun and writes the viewer to `dist/ui`.
 
 ## Recorded data
 
-Each recorded action can include its method, path, action metadata, associated selector, timestamp, XML source, and a screenshot URL backed by bounded in-memory storage. Request bodies and session IDs are not retained.
+Each recorded action can include its method, path, action metadata, associated selector, timestamp, page source, and a screenshot URL backed by bounded in-memory storage. Request bodies and session IDs are not retained.
 
 History retains at most 500 interactions and 100 MiB of captured data, evicting the oldest entries first.
 
