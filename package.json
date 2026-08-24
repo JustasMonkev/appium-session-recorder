@@ -1,14 +1,13 @@
 {
   "name": "appium-session-recorder",
   "version": "0.0.4",
-  "description": "Interactive Appium session recorder with modern UI",
+  "description": "Local Appium proxy that records interactions, screenshots, and page source",
   "type": "module",
   "bin": {
     "appium-recorder": "./dist/index.js"
   },
   "engines": {
-    "node": ">=24.16.0",
-    "bun": ">=1.0.0"
+    "bun": ">=1.4.0"
   },
   "keywords": [
     "appium",
@@ -23,33 +22,35 @@
   "scripts": {
     "cli": "bun run src/index.ts",
     "dev": "bun run src/index.ts",
-    "build": "bun run build:ui && bun build src/index.ts --outdir dist --target bun",
-    "build:ui": "cd src/ui && bun run build",
+    "dev:ui": "vite --config src/ui/vite.config.ts",
+    "build": "bun run build:ui && bun build src/index.ts --outdir dist --target bun --packages external",
+    "build:ui": "vite build --config src/ui/vite.config.ts",
     "prepack": "bun run build",
-    "test": "vitest run",
+    "test": "vitest run && vitest run --config vitest.ui.config.ts",
     "test:watch": "vitest",
     "test:ui": "vitest run --config vitest.ui.config.ts",
-    "test:all": "vitest run && vitest run --config vitest.ui.config.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage && vitest run --config vitest.ui.config.ts --coverage",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.tests.json && tsc --noEmit -p src/ui/tsconfig.json",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters && tsc -p tsconfig.tests.json --noUnusedLocals --noUnusedParameters && tsc --noEmit --noUnusedLocals --noUnusedParameters -p src/ui/tsconfig.json"
   },
   "dependencies": {
-    "@clack/prompts": "^1.4.0",
-    "@kobalte/core": "^0.13.11",
+    "@clack/prompts": "^1.7.0",
     "express": "^5.2.1",
-    "fast-diff": "^1.3.0",
-    "fast-xml-parser": "^5.8.0",
-    "http-proxy-middleware": "^4.0.0",
-    "solid-js": "^1.9.13"
+    "fast-xml-parser": "^5.11.0",
+    "http-proxy-middleware": "^4.2.0",
+    "parse5": "^8.0.1"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14",
+    "@types/bun": "^1.4.0",
     "@types/express": "^5.0.6",
-    "@vitest/coverage-v8": "^4.1.7",
-    "jsdom": "^29.1.1",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.14",
-    "vite-plugin-solid": "^2.11.12",
-    "vitest": "^4.1.7"
+    "@vitest/coverage-v8": "^4.1.11",
+    "fast-diff": "^1.3.0",
+    "jsdom": "^30.0.1",
+    "solid-js": "^1.9.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

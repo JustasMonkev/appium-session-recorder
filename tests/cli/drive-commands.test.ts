@@ -49,7 +49,7 @@ describe('drive commands', () => {
         ]);
 
         expect(result.command).toBe('drive.type');
-        expect((result.result as any).clearFirst).toBe(true);
+        expect(result.result).toMatchObject({ clearFirst: true });
         expect(fetchMock.mock.calls[1][0]).toContain('/clear');
         expect(fetchMock.mock.calls[2][0]).toContain('/value');
     });
@@ -73,7 +73,7 @@ describe('drive commands', () => {
             .mockResolvedValueOnce(jsonResponse({ value: null }))
             .mockResolvedValueOnce(jsonResponse({ value: null }));
 
-        await runDriveSwipe([
+        const result = await runDriveSwipe([
             '--appium-url', 'http://127.0.0.1:4723',
             '--session-id', 'session-1',
             '--from', '100,700',
@@ -83,7 +83,8 @@ describe('drive commands', () => {
 
         expect(fetchMock.mock.calls[0][0]).toContain('/actions');
         expect(fetchMock.mock.calls[1][0]).toContain('/actions');
-        expect((fetchMock.mock.calls[1][1] as RequestInit).method).toBe('DELETE');
+        expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('DELETE');
+        expect(result.result).toMatchObject({ durationMs: 350 });
     });
 
     it('scrolls down with correct W3C actions payload', async () => {
@@ -99,19 +100,19 @@ describe('drive commands', () => {
         ]);
 
         expect(result.command).toBe('drive.scroll');
-        expect((result.result as any).direction).toBe('down');
+        expect(result.result).toMatchObject({ direction: 'down' });
 
         expect(fetchMock.mock.calls[0][0]).toContain('/session/session-1/window/rect');
 
         const actionsCall = fetchMock.mock.calls[1];
         expect(actionsCall[0]).toContain('/session/session-1/actions');
-        const body = JSON.parse((actionsCall[1] as RequestInit).body as string);
+        const body = JSON.parse(String(actionsCall[1]?.body));
         const pointerActions = body.actions[0].actions;
         expect(pointerActions[0]).toEqual({ type: 'pointerMove', duration: 0, x: 500, y: 1600 });
         expect(pointerActions[3]).toEqual({ type: 'pointerMove', duration: 300, x: 500, y: 400 });
 
         expect(fetchMock.mock.calls[2][0]).toContain('/actions');
-        expect((fetchMock.mock.calls[2][1] as RequestInit).method).toBe('DELETE');
+        expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('DELETE');
     });
 
     it('falls back to /window/size when /window/rect fails', async () => {
@@ -132,13 +133,13 @@ describe('drive commands', () => {
 
         const actionsCall = fetchMock.mock.calls[2];
         expect(actionsCall[0]).toContain('/session/session-1/actions');
-        const body = JSON.parse((actionsCall[1] as RequestInit).body as string);
+        const body = JSON.parse(String(actionsCall[1]?.body));
         const pointerActions = body.actions[0].actions;
         expect(pointerActions[0]).toEqual({ type: 'pointerMove', duration: 0, x: 960, y: 900 });
         expect(pointerActions[3]).toEqual({ type: 'pointerMove', duration: 300, x: 240, y: 900 });
 
         expect(fetchMock.mock.calls[3][0]).toContain('/actions');
-        expect((fetchMock.mock.calls[3][1] as RequestInit).method).toBe('DELETE');
+        expect(fetchMock.mock.calls[3]?.[1]?.method).toBe('DELETE');
     });
 
     it('rejects invalid scroll direction', async () => {
@@ -147,5 +148,35 @@ describe('drive commands', () => {
             '--session-id', 'session-1',
             '--direction', 'diagonal',
         ])).rejects.toThrow('--direction must be one of: up, down, left, right');
+    });
+
+    it.each([
+        '100',
+        '1,2,3',
+        '1e3,2',
+        'NaN,2',
+        'Infinity,2',
+        '1 ,2',
+        ',2',
+    ])('rejects malformed swipe point %j before contacting Appium', async point => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+        await expect(runDriveSwipe([
+            '--appium-url', 'http://127.0.0.1:4723',
+            '--session-id', 'session-1',
+            '--from', point,
+            '--to', '100,200',
+        ])).rejects.toThrow('--from must be in format x,y');
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '1', '49', '50.5', '-1', 'Infinity'])('rejects invalid swipe duration %j', async duration => {
+        await expect(runDriveSwipe([
+            '--appium-url', 'http://127.0.0.1:4723',
+            '--session-id', 'session-1',
+            '--from', '100,700',
+            '--to', '100,200',
+            '--duration-ms', duration,
+        ])).rejects.toThrow('--duration-ms must be an integer of at least 50');
     });
 });

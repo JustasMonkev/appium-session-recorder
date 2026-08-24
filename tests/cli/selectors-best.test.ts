@@ -25,18 +25,21 @@ describe('selectors best command', () => {
 
         const parsed = parseSource(source);
         const target = parsed.elements.find(element => element.type === 'XCUIElementTypeButton');
-        expect(target).toBeDefined();
+        if (!target) throw new Error('Expected the fixture to contain a button');
 
         vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ value: source }));
 
         const result = await runSelectorsBest([
             '--appium-url', 'http://127.0.0.1:4723',
             '--session-id', 'session-1',
-            '--element-ref', target!.elementRef,
+            '--element-ref', target.elementRef,
         ]);
 
         expect(result.command).toBe('selectors.best');
-        expect((result.result as any).topSelectors.length).toBeGreaterThan(0);
-        expect((result.result as any).topSelectors[0].reasons).toContain('UNIQUE_MATCH');
+        expect(result.result).toEqual(expect.objectContaining({
+            topSelectors: expect.arrayContaining([expect.objectContaining({
+                reasons: expect.arrayContaining(['UNIQUE_MATCH']),
+            })]),
+        }));
     });
 });

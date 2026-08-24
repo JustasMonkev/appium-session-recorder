@@ -60,31 +60,33 @@ Capabilities can also be passed inline with `--caps-json '{"platformName":"iOS",
 ## Execution Rules
 
 1. Write command output to files with `--output /tmp/<step>.json`.
-2. Never print raw XML source or base64 screenshots to stdout — always parse with `jq`.
+2. Keep raw XML and screenshots out of stdout with `--output`, then inspect the saved response with `jq`.
 3. Skip `screen elements` and `selectors best` when you can guess selectors from the task context.
 4. Retry each failed action at most twice.
 5. Always delete the session when finished, whether the task succeeded or failed.
 6. **Chain commands in a single bash call** using `&&` to reduce round-trips.
+7. Shell variables do not persist between separate Bash Calls. Start every call after session creation with:
+   `APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"` and
+   `SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"`.
 
 ## Session Lifecycle
-
-```bash
-APPIUM_URL="http://127.0.0.1:4723"
-```
 
 **Create session and capture ID (one bash call):**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
 appium-recorder session create \
   --appium-url "$APPIUM_URL" \
   --caps-file ./caps.json \
   --output /tmp/session.json \
-&& SESSION_ID="$(jq -r '.result.sessionId' /tmp/session.json)"
+&& SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 ```
 
 **Delete session:**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder session delete \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -114,6 +116,8 @@ See Session Lifecycle above.
 ### Bash Call 2 — Chain all actions
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive tap \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -165,12 +169,14 @@ Try these address-field selectors in order until one succeeds:
 Append `\n` to the text to submit the URL automatically:
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive type \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
   --using "id" \
   --value "URL" \
-  --text "https://example.com\n" \
+  --text $'https://example.com\n' \
   --clear-first \
   --output /tmp/drive.type.json
 ```
@@ -178,6 +184,8 @@ appium-recorder drive type \
 If `ok: false`, retry with the next selector from the table. If the URL field remains active after typing, tap the Go button:
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive tap \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -189,6 +197,8 @@ appium-recorder drive tap \
 To verify navigation, take a snapshot and check for the expected domain:
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder screen snapshot \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -213,6 +223,8 @@ See Session Lifecycle above.
 ### Step 2 — Get actionable elements and inspect them (one bash call)
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder screen elements \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -228,6 +240,8 @@ appium-recorder screen elements \
 Pick the `elementRef` that matches your target from Step 2, then:
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder selectors best \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -244,6 +258,8 @@ Use the first selector where `matchCount` equals 1.
 **Tap:**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive tap \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -255,6 +271,8 @@ appium-recorder drive tap \
 **Type:**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive type \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -268,6 +286,8 @@ appium-recorder drive type \
 **Back:**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive back \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -277,6 +297,8 @@ appium-recorder drive back \
 **Swipe:**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive swipe \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -289,6 +311,8 @@ appium-recorder drive swipe \
 **Scroll:**
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive scroll \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \
@@ -303,6 +327,8 @@ Directions: `up`, `down`, `left`, `right`. Optional `--duration-ms` (default 300
 If an action fails with `no such element`, the target may be off-screen. Scroll down and retry:
 
 ```bash
+APPIUM_URL="${APPIUM_URL:-http://127.0.0.1:4723}"
+SESSION_ID="$(jq -er '.result.sessionId' /tmp/session.json)"
 appium-recorder drive scroll \
   --appium-url "$APPIUM_URL" \
   --session-id "$SESSION_ID" \

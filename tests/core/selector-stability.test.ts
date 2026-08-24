@@ -72,6 +72,19 @@ describe('evaluateSelectorStability', () => {
         expect(report.results[0].firstFailureStep).toBe(2);
     });
 
+    it('counts only consecutive stability before the first failure', () => {
+        const target = createElement({ name: 'loginBtn' });
+        const candidate: SelectorCandidate = {
+            strategy: 'accessibility id',
+            value: 'loginBtn',
+            platform: 'ios',
+        };
+
+        const report = evaluateSelectorStability([candidate], [[target], [], [target]]);
+
+        expect(report.results[0]).toMatchObject({ stableSteps: 1, firstFailureStep: 2, totalSteps: 3 });
+    });
+
     it('should detect failure when selector matches multiple elements', () => {
         const el1 = createElement({ name: 'btn', index: 0, elementRef: 'ios:/Button[1]' });
         const el2 = createElement({ name: 'btn', index: 1, elementRef: 'ios:/Button[2]' });

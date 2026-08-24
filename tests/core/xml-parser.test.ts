@@ -2,6 +2,95 @@ import { describe, it, expect } from 'vitest';
 import { parseSource } from '../../src/core/xml/parse-source';
 
 describe('parseSource', () => {
+    it('parses browser HTML with native recovery and web semantics', () => {
+        const parsed = parseSource(`
+            <!doctype html><html><head><meta charset=utf-8></head><body>
+                <ul><li id=first>First<li id=second>Second</ul>
+                <input id=secret type=hidden><input id=email disabled>
+                <button id=save class="android.widget.Button">Save</button>
+            </body></html>
+        `);
+
+        expect(parsed.platform).toBe('unknown');
+        expect(parsed.elements.map(element => element.type)).toEqual([
+            'html', 'head', 'meta', 'body', 'ul', 'li', 'li', 'input', 'input', 'button',
+        ]);
+        expect(parsed.elements.filter(element => element.type === 'li').map(element => element.xpath)).toEqual([
+            '/html[1]/body[1]/ul[1]/li[1]',
+            '/html[1]/body[1]/ul[1]/li[2]',
+        ]);
+        expect(parsed.elements.find(element => element.resourceId === 'secret')).toMatchObject({
+            type: 'input', visible: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'email')).toMatchObject({
+            type: 'input', enabled: false, clickable: false, attributes: { disabled: '' },
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'save')).toMatchObject({
+            type: 'button', platform: 'unknown', enabled: true, clickable: true,
+        });
+    });
+
+    it('does not expose markup-looking raw text or template content as live elements', () => {
+        const parsed = parseSource(`
+            <html><head><style>.x::before { content: "<fake id=style>" }</style></head><body>
+                <script>if (a < b) value = "<fake id=script>";</script>
+                <template><button id=template-only>Hidden</button></template>
+                <button id=real>Real</button>
+            </body></html>
+        `);
+
+        expect(parsed.elements.map(element => element.resourceId).filter(Boolean)).toEqual(['real']);
+        expect(parsed.elements.map(element => element.type)).toContain('script');
+        expect(parsed.elements.map(element => element.type)).toContain('style');
+        expect(parsed.elements.map(element => element.type)).toContain('template');
+    });
+
+    it('encodes quote, colon, and Unicode HTML names as safe XPath segments', () => {
+        const elements = parseSource(
+            '<html><body><x"y id=quoted></x"y><x:y id=colon></x:y><math-α id=unicode></math-α></body></html>',
+        ).elements;
+        const path = (id: string) => elements.find(element => element.resourceId === id)?.xpath;
+
+        expect(path('quoted')).toBe('/html[1]/body[1]/*[local-name(.)=concat("x",\'"\',"y")][1]');
+        expect(path('colon')).toBe('/html[1]/body[1]/*[local-name(.)="x:y"][1]');
+        expect(path('unicode')).toBe('/html[1]/body[1]/*[local-name(.)="math-α"][1]');
+    });
+
+    it('inherits hidden, disabled, and inert HTML state', () => {
+        const elements = parseSource(`
+            <html><body>
+                <div hidden><button id=hidden-child>Hidden</button></div>
+                <fieldset disabled>
+                    <legend><input id=legend-child></legend>
+                    <legend><input id=second-legend-child></legend>
+                    <a id=link href=/ disabled>Link</a>
+                    <input id=disabled-child>
+                </fieldset>
+                <select disabled><option id=select-option>Disabled</option></select>
+                <select><optgroup disabled><option id=group-option>Disabled</option></optgroup></select>
+                <div inert><button id=inert-child>Inert</button></div>
+                <button id=hidden-false hidden=false>Hidden</button>
+                <button id=inert-false inert=false>Inert</button>
+                <input id=disabled-false disabled=false>
+                <input id=form-feed\fdisabled>
+            </body></html>
+        `).elements;
+        const byId = (id: string) => elements.find(element => element.resourceId === id);
+
+        expect(byId('hidden-child')).toMatchObject({ visible: false, clickable: false });
+        expect(byId('legend-child')).toMatchObject({ enabled: true, clickable: true });
+        expect(byId('second-legend-child')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('link')).toMatchObject({ enabled: true, clickable: true });
+        expect(byId('disabled-child')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('select-option')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('group-option')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('inert-child')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('hidden-false')).toMatchObject({ visible: false, clickable: false });
+        expect(byId('inert-false')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('disabled-false')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('form-feed')).toMatchObject({ enabled: false, clickable: false });
+    });
+
     it('parses iOS source with normalized metadata', () => {
         const xml = `
             <AppiumAUT type="XCUIElementTypeApplication" name="MyApp" enabled="true" visible="true">
@@ -48,9 +137,132 @@ describe('parseSource', () => {
         expect(button?.height).toBe(150);
     });
 
+    it('matches DOM attribute entity and whitespace normalization', () => {
+        const xml = '<hierarchy><node class="android.widget.TextView" text="literal\tline\nbreak&#10;hex&#x9;&amp;#10;"/></hierarchy>';
+        const element = parseSource(xml).elements[1];
+
+        expect(element.text).toBe('literal line break\nhex\t&#10;');
+        expect(element.attributes.text).toBe('literal line break\nhex\t&#10;');
+    });
+
+    it('decodes supplementary numeric references and rejects illegal ones without throwing', () => {
+        expect(parseSource('<Root text="&#x1F600;"/>').elements[0].text).toBe('😀');
+        for (const reference of ['&#0;', '&#xD800;', '&#x110000;', '&#1114112;', `&#${'9'.repeat(100)};`]) {
+            expect(parseSource(`<Root text="${reference}"/>`).elements).toEqual([]);
+        }
+    });
+
+    it('treats numeric false visibility attributes as hidden', () => {
+        const elements = parseSource('<Root><A visible="0"/><B displayed="0"/><C visible="1"/></Root>').elements;
+
+        expect(elements.slice(1).map(element => element.visible)).toEqual([false, false, true]);
+    });
+
     it('returns empty result for invalid XML', () => {
         const parsed = parseSource('not xml');
         expect(parsed.platform).toBe('unknown');
         expect(parsed.elements).toEqual([]);
+    });
+
+    it('ignores an XML declaration and parses the document root', () => {
+        const parsed = parseSource(
+            '<?xml version="1.0" encoding="UTF-8"?><hierarchy><node class="android.widget.Button" /></hierarchy>',
+        );
+
+        expect(parsed.elements.map(element => element.type)).toEqual(['hierarchy', 'android.widget.Button']);
+        expect(parsed.elements[1].xpath).toBe('/hierarchy[1]/node[1]');
+    });
+
+    it('parses declared namespace prefixes and rejects invalid bindings', () => {
+        const valid = parseSource('<root xmlns:p="urn:test"><p:a p:x="1"/></root>');
+        expect(valid.elements[1]).toMatchObject({
+            type: 'p:a',
+            attributes: { 'p:x': '1' },
+        });
+        expect(parseSource(
+            '<root xmlns:xml="http://www.w3.org/XML/1998/namespac&#x65;" xml:lang="en"/>',
+        ).elements[0].attributes['xml:lang']).toBe('en');
+        for (const xml of [
+            '<p:a/>',
+            '<a p:x="1"/>',
+            '<a xmlns:xml="bad"/>',
+            '<a xmlns:xmlns="urn:test"/>',
+            '<a xmlns:p="urn:test" xmlns:q="urn:test" p:x="1" q:x="2"/>',
+            '<a xmlns:p="http://www.w3.org/2000/xmln&#x73;/"/>',
+        ]) {
+            expect(parseSource(xml).elements).toEqual([]);
+        }
+    });
+
+    it('indexes inherited-property tag names without corrupting sibling paths', () => {
+        const parsed = parseSource('<root><__proto__/><__proto__/><constructor/><constructor/></root>');
+        expect(parsed.elements.slice(1).map(element => element.xpath)).toEqual([
+            '/root[1]/__proto__[1]',
+            '/root[1]/__proto__[2]',
+            '/root[1]/constructor[1]',
+            '/root[1]/constructor[2]',
+        ]);
+    });
+
+    it('round-trips parser-sensitive tag and attribute names without prototype pollution', () => {
+        const names = [
+            '__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf',
+            '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__',
+            '_asr_', '_asr_5f_5f_70_72_6f_74_6f_5f_5f',
+        ];
+        const xml = `<root>${names.map((name, index) => `<${name} ${name}="value-${index}"/>`).join('')}</root>`;
+        const elements = parseSource(xml).elements.slice(1);
+
+        expect(elements.map(element => element.xpath.split('/').slice(-1)[0])).toEqual(
+            names.map(name => `${name}[1]`),
+        );
+        for (let index = 0; index < names.length; index++) {
+            expect(Object.hasOwn(elements[index].attributes, names[index])).toBe(true);
+            expect(elements[index].attributes[names[index]]).toBe(`value-${index}`);
+        }
+        expect(Object.getPrototypeOf(elements[0].attributes)).toBe(Object.prototype);
+    });
+
+    it('preserves mixed sibling order and per-type indexes', () => {
+        const parsed = parseSource(`
+            <Root>
+                <Button name="first" />
+                <Text name="middle" />
+                <Button name="last" />
+            </Root>
+        `);
+
+        expect(parsed.elements.map(element => element.name)).toEqual(['', 'first', 'middle', 'last']);
+        expect(parsed.elements.slice(1).map(element => element.xpath)).toEqual([
+            '/Root[1]/Button[1]',
+            '/Root[1]/Text[1]',
+            '/Root[1]/Button[2]',
+        ]);
+    });
+
+    it('bounds deeply nested XML without overflowing the call stack', () => {
+        const depth = 300;
+        const xml = `${'<Node>'.repeat(depth)}${'</Node>'.repeat(depth)}`;
+
+        const parsed = parseSource(xml);
+
+        expect(parsed.elements).toEqual([]);
+    });
+
+    it('rejects input above the 10,000-element boundary', () => {
+        const xml = `<Root>${'<Item />'.repeat(10_005)}</Root>`;
+
+        expect(parseSource(xml).elements).toEqual([]);
+    });
+
+    it('rejects XML larger than 10,000,000 characters', () => {
+        expect(parseSource(`<Root>${'x'.repeat(10_000_000)}</Root>`).elements).toEqual([]);
+    });
+
+    it('rejects XML whose derived absolute paths exceed the aggregate budget', () => {
+        const tag = `T${'x'.repeat(511)}`;
+        const xml = `${`<${tag}>`.repeat(95)}${`<${tag}/>` .repeat(140)}${`</${tag}>`.repeat(95)}`;
+
+        expect(parseSource(xml).elements).toEqual([]);
     });
 });

@@ -1,380 +1,194 @@
 # Appium Session Recorder
 
-A modern Appium recorder and automation CLI with real-time UI visualization, session navigation commands, and selector ranking. Built with Bun, Solid.js, and Kobalte.
+A local Appium proxy and JSON-first automation CLI. It records actions, screenshots, and page source; ranks selectors; and streams captured sessions to a Solid.js viewer.
 
-![Workflow Demo](workflow.gif)
+## Features
 
-## ✨ Features
+- Records Appium actions and associates element actions with the selector that resolved them.
+- Captures screenshots and HTML/XML page source after successful actions.
+- Streams updates to a browser viewer with Server-Sent Events.
+- Inspects XML, tests selectors, compares screens, summarizes journeys, and checks selector stability.
+- Provides scriptable `session`, `screen`, `selectors`, and `drive` commands.
+- Supports iOS, Android, and generic Appium XML.
 
-- 🎬 **Session Recording**: Intercepts and logs Appium commands (currently focused on `POST /session/:sessionId/*`)
-- 📸 **Screenshot Capture**: Automatically captures screenshots after actions
-- 🤖 **JSON-First Command Mode**: Scriptable subcommands for agent workflows (`session`, `screen`, `selectors`, `drive`)
-- 🧭 **CLI App Navigation**: Drive taps, typing, back navigation, and swipe gestures via Appium
-- 🏆 **Best Selector Ranking**: Heuristic ranking with strategy scoring + match counts + reason codes
-- 🔍 **Element Inspector**: Interactive element inspection with multiple locator strategies
-- 🎯 **Query Tester**: Test locators in real-time on captured screenshots
-- 📊 **Real-time Updates**: Live dashboard with Server-Sent Events
-- 🎨 **Modern UI**: Beautiful dark theme with vibrant accents using Solid.js + Kobalte
-- ⚡ **Fast**: Built with Bun for optimal performance
-- 🛠️ **Interactive CLI**: Beautiful prompts for easy configuration
+## Requirements
 
-## 🚀 Quick Start
+- [Bun](https://bun.sh/) 1.4 or newer
+- A running [Appium](https://appium.io/) server
 
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) >= 18 or [Bun](https://bun.sh/) runtime
-- [Appium](https://appium.io/) server installed
-
-### Start Appium Server
-
-Start the Appium server (CORS is only needed if you plan to call Appium directly from a browser):
+## Install
 
 ```bash
-appium --port 4723 --allow-cors
+bun add --global appium-session-recorder
 ```
 
-The recorder proxy itself does not require `--allow-cors` for normal usage.
-
-### Installation
+The package can also be installed with npm when Bun is already available on `PATH`:
 
 ```bash
-npm i -g appium-session-recorder
+npm install --global appium-session-recorder
 ```
 
-### Run the CLI
+## Start recording
 
 ```bash
+appium --port 4723
 appium-recorder
 ```
 
-The CLI will interactively prompt you for:
-- **Proxy port** (default: 4724)
-- **Proxy host** (default: 127.0.0.1)
-- **Appium server URL** (default: http://127.0.0.1:4723)
-
-Alternatively, use command-line arguments:
+Or supply the proxy configuration:
 
 ```bash
-appium-recorder --port 8080 --appium-url http://192.168.1.100:4723
+appium-recorder \
+  --port 4724 \
+  --host 127.0.0.1 \
+  --appium-url http://127.0.0.1:4723
 ```
 
-Or run command mode (JSON output by default):
+Point Appium Inspector or another client at `http://127.0.0.1:4724`, then open `http://127.0.0.1:4724/_recorder`.
 
-```bash
-appium-recorder session create --appium-url http://127.0.0.1:4723 --caps-file ./caps.json --pretty
-```
+The recorder only accepts `localhost`, `127.0.0.1`, or `::1` as its bind host.
 
-### Configure Appium Inspector
+## Command mode
 
-Point Appium Inspector to the recorder proxy:
+Command mode writes one JSON response to stdout. Add `--pretty` for formatted JSON or `--output <path>` to write it to a file instead of stdout.
 
-| Setting | Value |
-|---------|-------|
-| Remote Host | `127.0.0.1` |
-| Remote Port | `4724` (or your configured port) |
-| Remote Path | `/` |
-
-### Access the UI
-
-Open your browser to:
-```
-http://localhost:4724/_recorder
-```
-
-## 📖 Usage
-
-## Security (Local-Only Tool)
-
-This project is intended for **local testing and development**. It runs an unauthenticated proxy/UI that can forward commands to Appium. For normal usage, keep it bound to localhost and do not expose it to untrusted networks.
-
-**Current known gaps (will be addressed in future updates):**
-- Missing validation for `sessionId`
-- Missing validation for `appiumUrl`
-- Rate limiting for API endpoints
-- Authentication/authorization (likely optional, since local-by-default is intentional)
-
-**Practical guidance:**
-- Run the recorder on `127.0.0.1` only (default) and avoid port-forwarding/sharing the port.
-- Be cautious with `appium --allow-cors`; treat the recorder + Appium as a local dev surface while running.
-- Page source is untrusted input; XML is rendered as text (not HTML) to mitigate XSS.
-
-### Command Mode (JSON)
-
-```bash
+```text
 appium-recorder <group> <command> [flags]
 ```
 
-Available command groups:
+Available commands:
 
 - `proxy start`
-- `session create|delete`
-- `screen snapshot|elements`
+- `session create`, `session delete`
+- `screen snapshot`, `screen elements`
 - `selectors best`
-- `drive tap|type|back|swipe`
+- `drive tap`, `drive type`, `drive back`, `drive swipe`, `drive scroll`
 
-Global command flags:
-
-- `--pretty` pretty-print JSON
-- `--output <path>` persist JSON output to a file
-- Legacy mode (`appium-recorder [legacy-options]`) does not accept `--pretty` or `--output`
-
-### Agent Skill
-
-This repo includes a reusable Codex skill at:
-
-- `skills/appium-cli-selector-navigator/SKILL.md`
-
-The skill is designed for CLI-only navigation + selector discovery loops.
-
-### Skill Runbook (What To Run)
-
-Use this when you want to drive the app and find selectors with `$appium-cli-selector-navigator`.
-
-1. Start Appium:
-
-```bash
-appium --port 4723 --allow-cors
-```
-
-2. (Optional) Install skill globally for Codex:
-
-```bash
-mkdir -p ~/.claude/skills
-cp -R ./skills/appium-cli-selector-navigator ~/.claude/skills/appium-cli-selector-navigator
-```
-
-Restart Claude after installing the global skill.
-
-3. Create a capabilities file (example iOS Safari):
-
-```bash
-cat > /tmp/caps.json <<'JSON'
-{
-  "platformName": "iOS",
-  "appium:deviceName": "iPhone 17",
-  "appium:platformVersion": "26.2",
-  "appium:automationName": "XCUITest",
-  "appium:bundleId": "com.apple.mobilesafari",
-  "appium:newCommandTimeout": 3600,
-  "appium:connectHardwareKeyboard": true,
-  "appium:includeSafariInWebviews": true
-}
-JSON
-```
-
-4. Create session and capture `SESSION_ID`:
+Create a session:
 
 ```bash
 appium-recorder session create \
   --appium-url http://127.0.0.1:4723 \
-  --caps-file /tmp/caps.json \
-  --output /tmp/session.json \
-  --pretty \
-&& SESSION_ID="$(jq -r '.result.sessionId' /tmp/session.json)" \
-&& echo "$SESSION_ID"
+  --caps-file ./caps.json \
+  --pretty
 ```
 
-5. Fetch current elements and save JSON:
+List actionable elements and rank selectors:
 
 ```bash
 appium-recorder screen elements \
   --appium-url http://127.0.0.1:4723 \
   --session-id "$SESSION_ID" \
   --only-actionable \
-  --limit 80 \
-  --output /tmp/elements.json \
-  --pretty \
-&& jq -r '.result.elements[] | [.elementRef, .type, .name, .label, .resourceId] | @tsv' /tmp/elements.json
-```
+  --limit 80
 
-6. Pick element and get best selectors:
-
-```bash
 appium-recorder selectors best \
   --appium-url http://127.0.0.1:4723 \
   --session-id "$SESSION_ID" \
-  --element-ref "<ELEMENT_REF>" \
-  --pretty
+  --element-ref "<ELEMENT_REF>"
 ```
 
-7. Drive actions (examples):
+Drive the session:
 
 ```bash
-# Tap an element
 appium-recorder drive tap \
   --appium-url http://127.0.0.1:4723 \
   --session-id "$SESSION_ID" \
-  --using "accessibility id" --value "Accept all" --pretty
+  --using "accessibility id" \
+  --value "Continue"
 
-# Type into a field
 appium-recorder drive type \
   --appium-url http://127.0.0.1:4723 \
   --session-id "$SESSION_ID" \
-  --using "accessibility id" --value "Address" \
-  --text "example.com\n" --clear-first --pretty
+  --using id \
+  --value "com.example:id/email" \
+  --text "user@example.com" \
+  --clear-first
 
-# Navigate back
-appium-recorder drive back \
-  --appium-url http://127.0.0.1:4723 \
-  --session-id "$SESSION_ID" --pretty
-
-# Swipe gesture
-appium-recorder drive swipe \
+appium-recorder drive scroll \
   --appium-url http://127.0.0.1:4723 \
   --session-id "$SESSION_ID" \
-  --from 900,1800 --to 900,400 --duration-ms 350 --pretty
+  --direction down
 ```
 
-8. Cleanup session:
+Delete the session:
 
 ```bash
 appium-recorder session delete \
   --appium-url http://127.0.0.1:4723 \
-  --session-id "$SESSION_ID" --pretty
+  --session-id "$SESSION_ID"
 ```
 
-### Legacy CLI Options (Backwards Compatible)
+The repository includes the [appium-cli-selector-navigator skill](skills/appium-cli-selector-navigator).
+
+## Configuration
+
+| Option | Default | Constraint |
+|---|---:|---|
+| `--port`, `-p` | `4724` | Integer from 1 to 65535 |
+| `--host` | `127.0.0.1` | Loopback only |
+| `--appium-url`, `-u` | `http://127.0.0.1:4723` | HTTP(S), without credentials, query, or fragment |
+| `--help`, `-h` | | Show help |
+| `--version`, `-v` | | Show version |
+
+Environment variables:
 
 ```bash
-appium-recorder [options]
-
-OPTIONS:
-  -p, --port <number>        Proxy server port (default: 4724)
-  -u, --appium-url <url>     Appium server URL (default: http://127.0.0.1:4723)
-  --host <host>              Proxy server host (default: 127.0.0.1)
-  -h, --help                 Show help message
-  -v, --version              Show version
-```
-
-Configuration priority (highest to lowest):
-1. Command-line arguments
-2. Interactive prompts
-3. Environment variables
-4. Default values
-
-### Environment Variables
-
-```bash
-APPIUM_URL=http://192.168.1.100:4723
-PROXY_PORT=8080
+APPIUM_URL=http://127.0.0.1:4723
+PROXY_PORT=4724
 PROXY_HOST=127.0.0.1
-
 appium-recorder
 ```
 
-## 🎨 UI Features
+Explicit CLI values take precedence over interactive values, environment variables, and defaults.
 
-### Dashboard
+## Security
 
-- **Total Requests**: Count of all intercepted requests
-- **Actions**: Requests with screenshots (clicks, inputs, etc.)
-- **Real-time Updates**: Automatically refreshes as you interact
+The recorder is an unauthenticated local development tool. It rejects non-loopback bind configuration and HTTP requests with foreign `Host` or `Origin` values. Do not port-forward or otherwise expose it to an untrusted network.
 
-### Timeline
+The server limits request bodies, upstream response buffering, selector mappings, parsed XML, and retained history. Session and element IDs are URL-encoded before direct Appium commands. Page source is rendered as text, never injected as HTML.
 
-- View all interactions in chronological order
-- Color-coded by HTTP method (mostly `POST`)
-- **Action markers** for requests with screenshots
-- Click screenshots to open inspector
+The configured Appium server may be remote, but its URL must use HTTP(S) and must not contain credentials. Protect the Appium endpoint separately.
 
-### Element Inspector
-
-- **Query Tester**: Test different locator strategies
-  - accessibility id
-  - xpath
-  - class name
-  - iOS predicate string
-  - iOS class chain
-- **Element Details**: View element properties (name, label, value, bounds)
-- **Locators**: Auto-generated locators ready to copy
-- **Click to copy**: One-click locator copying
-
-## 🔧 Development
-
-### Setup
+## Development
 
 ```bash
 git clone https://github.com/JustasMonkev/appium-session-recorder.git
 cd appium-session-recorder
 bun install
+
+# Terminal 1: recorder API/proxy
+bun run dev -- --port 4724 --appium-url http://127.0.0.1:4723
+
+# Terminal 2: viewer with API proxying
+bun run dev:ui
 ```
 
-### Run from Source
+Open `http://127.0.0.1:3000/_recorder/` while both processes run.
+
+Verification:
 
 ```bash
-bun run cli
-```
-
-This is equivalent to `appium-recorder` but runs directly from source. All examples in this README that use `appium-recorder` can be replaced with `bun run cli` during development.
-
-### Build the UI
-
-```bash
-cd src/ui
+bun run lint
+bun run typecheck
+bun run test
+bun run test:coverage
 bun run build
 ```
 
-### Run in Development Mode
+The build bundles the CLI for Bun and writes the viewer to `dist/ui`.
 
-```bash
-# Terminal 1: Build UI in watch mode
-cd src/ui
-bun run dev
+## Recorded data
 
-# Terminal 2: Run CLI
-bun run cli
-```
+Each recorded action can include its method, path, action metadata, associated selector, timestamp, page source, and a screenshot URL backed by bounded in-memory storage. Request bodies and session IDs are not retained.
 
-### Run Tests
+History retains at most 500 interactions and 100 MiB of captured data, evicting the oldest entries first.
 
-```bash
-bun run test           # Run all tests
-bun run test:watch     # Watch mode
-bun run test:coverage  # With coverage
-```
+## Architecture
 
-### Build for Production
-
-```bash
-bun run build
-```
-
-This builds both the UI and the CLI executable.
-
-## 📦 What's Recorded
-
-The recorder captures:
-- Element clicks
-- Text input (value)
-- Element clear
-- Find element/elements
-- Touch actions
-- Navigation (back, forward, refresh)
-
-For each action:
-- ✅ Request details (method, path, body)
-- ✅ Screenshot (base64)
-- ✅ Page source (XML)
-- ✅ Timestamp
-
-## 🎯 Use Cases
-
-- **Test Debugging**: Review session history to debug failing tests
-- **Element Discovery**: Find reliable locators for automation
-- **Training**: Show team members how to interact with the app
-- **Test Recording**: Generate test scripts from recorded interactions
-
-## 🤝 Architecture
-
-```
-┌─────────────────────┐      ┌─────────────────────┐      ┌─────────────────────┐
-│  Appium Inspector   │ ──── │  Session Recorder   │ ──── │   Appium Server     │
-│  (localhost:4724)   │      │   (Bun + Express)   │      │  (localhost:4723)   │
-└─────────────────────┘      └─────────────────────┘      └─────────────────────┘
-                                        │
-                                        ▼
-                              ┌─────────────────────┐
-                              │   Web UI (Solid.js) │
-                              │  Real-time Updates  │
-                              └─────────────────────┘
+```mermaid
+flowchart LR
+    Client["Appium client"] --> Recorder["Local recorder proxy"]
+    Recorder --> Appium["Appium server"]
+    Recorder --> Viewer["Solid.js viewer"]
 ```

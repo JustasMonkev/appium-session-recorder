@@ -1,22 +1,19 @@
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
-import path from 'path';
 
 export default defineConfig({
     plugins: [solid()],
-    root: '.',
+    root: import.meta.dirname,
     base: '/_recorder/',
     build: {
         outDir: '../../dist/ui',
         emptyOutDir: true,
+        license: { fileName: 'THIRD_PARTY_LICENSES.md' },
     },
     server: {
         port: 3000,
-    },
-    resolve: {
-        alias: {
-            '@': path.resolve(__dirname, './src'),
+        proxy: {
+            '/_recorder/api': 'http://127.0.0.1:4724',
         },
     },
 });
-

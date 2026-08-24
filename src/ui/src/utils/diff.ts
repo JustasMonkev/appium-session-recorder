@@ -1,60 +1,23 @@
 import fastDiff from 'fast-diff';
-import type { DiffLine, DiffRow, DiffSegment, DiffSummary } from '../types';
+import { analyzePageSource, type PageSourceAnalysis } from '../../../core/xml/xml-limits';
+import type { DiffLine, DiffRow, DiffSummary } from '../types';
+import { formatXml } from './format-xml';
 
-const DIFF_TYPE_MAP: Record<number, DiffSegment['type']> = {
+const DIFF_TYPE_MAP: Record<number, DiffLine['type']> = {
     [fastDiff.EQUAL]: 'equal',
     [fastDiff.INSERT]: 'insert',
     [fastDiff.DELETE]: 'delete',
 };
+const MAX_DIFF_LINES = 2_000;
+const MAX_FORMATTED_DIFF_CHARS = 2 * 1024 * 1024;
 
-function formatXmlLines(xml: string): string[] {
-    const formatted: string[] = [];
-    let indent = 0;
-    const tokens = xml.replace(/></g, '>\n<').split('\n');
-
-    for (const token of tokens) {
-        const line = token.trim();
-        if (!line) continue;
-
-        if (line.startsWith('</')) {
-            indent = Math.max(0, indent - 1);
-            formatted.push(`${'  '.repeat(indent)}${line}`);
-            continue;
-        }
-
-        if (line.startsWith('<?') || line.startsWith('<!--')) {
-            formatted.push(`${'  '.repeat(indent)}${line}`);
-            continue;
-        }
-
-        const isSelfClosing = line.endsWith('/>');
-        const openTagMatch = line.match(/^<([^\s/>]+)(.*?)(\/?)>$/);
-
-        if (!openTagMatch || line.includes('</')) {
-            formatted.push(`${'  '.repeat(indent)}${line}`);
-            continue;
-        }
-
-        const [, tagName, rawAttributes, selfClosingMarker] = openTagMatch;
-        const attributes = Array.from(rawAttributes.matchAll(/([^\s=]+="[^"]*")/g)).map((match) => match[1]);
-        const shouldSplitAttributes = attributes.length > 2 || line.length > 120;
-
-        if (!shouldSplitAttributes || attributes.length === 0) {
-            formatted.push(`${'  '.repeat(indent)}${line}`);
-        } else {
-            formatted.push(`${'  '.repeat(indent)}<${tagName}`);
-            attributes.forEach((attribute) => {
-                formatted.push(`${'  '.repeat(indent + 1)}${attribute}`);
-            });
-            formatted.push(`${'  '.repeat(indent)}${isSelfClosing || selfClosingMarker === '/' ? '/>' : '>'}`);
-        }
-
-        if (!isSelfClosing && selfClosingMarker !== '/') {
-            indent++;
-        }
-    }
-
-    return formatted;
+function formatSourceLines(source: string, analysis: PageSourceAnalysis): string[] | undefined {
+    const formatted = analysis.format === 'xml'
+        ? formatXml(source, analysis)
+        : source.endsWith('\n') ? source : `${source}\n`;
+    if (!formatted || formatted.length > MAX_FORMATTED_DIFF_CHARS) return undefined;
+    const lines = formatted.slice(0, -1).split('\n');
+    return lines.length <= MAX_DIFF_LINES ? lines : undefined;
 }
 
 function buildEncodedLineDiff(prevLines: string[], currLines: string[]) {
@@ -79,9 +42,15 @@ function buildEncodedLineDiff(prevLines: string[], currLines: string[]) {
     };
 }
 
-function buildDiffLines(prevXml: string, currXml: string): DiffLine[] {
-    const prevLines = formatXmlLines(prevXml);
-    const currLines = formatXmlLines(currXml);
+function buildDiffLines(
+    previous: string,
+    current: string,
+    prevAnalysis: PageSourceAnalysis,
+    currAnalysis: PageSourceAnalysis,
+): DiffLine[] | undefined {
+    const prevLines = formatSourceLines(previous, prevAnalysis);
+    const currLines = formatSourceLines(current, currAnalysis);
+    if (!prevLines || !currLines || prevLines.length + currLines.length > MAX_DIFF_LINES) return undefined;
     const { diff, tokenToLine } = buildEncodedLineDiff(prevLines, currLines);
 
     const lines: DiffLine[] = [];
@@ -168,45 +137,18 @@ function buildDiffRows(lines: DiffLine[]): DiffRow[] {
     return rows;
 }
 
-function groupDiffSegments(lines: DiffLine[]): DiffSegment[] {
-    const segments: DiffSegment[] = [];
-
-    for (const line of lines) {
-        const text = `${line.text}\n`;
-        const previous = segments[segments.length - 1];
-
-        if (previous && previous.type === line.type) {
-            previous.text += text;
-            continue;
-        }
-
-        segments.push({
-            type: line.type,
-            text,
-        });
-    }
-
-    return segments;
-}
-
-export function computeXmlDiff(prevXml: string, currXml: string): DiffSegment[] {
-    return groupDiffSegments(buildDiffLines(prevXml, currXml));
-}
-
-function countElements(xml: string): number {
-    // Count opening tags (not self-closing comments or processing instructions)
-    const matches = xml.match(/<[a-zA-Z][^>]*>/g);
-    return matches ? matches.length : 0;
-}
-
 export function computeDiffSummary(prevXml: string | undefined, currXml: string | undefined): DiffSummary | null {
     if (!prevXml || !currXml) return null;
+    if (prevXml.length > MAX_FORMATTED_DIFF_CHARS || currXml.length > MAX_FORMATTED_DIFF_CHARS) return null;
+    const prevAnalysis = analyzePageSource(prevXml);
+    const currAnalysis = analyzePageSource(currXml);
+    if (!prevAnalysis || !currAnalysis) return null;
 
-    const lines = buildDiffLines(prevXml, currXml);
+    const lines = buildDiffLines(prevXml, currXml, prevAnalysis, currAnalysis);
+    if (!lines) return null;
     const rows = buildDiffRows(lines);
-    const segments = groupDiffSegments(lines);
-    const prevElementCount = countElements(prevXml);
-    const currElementCount = countElements(currXml);
+    const prevElementCount = prevAnalysis.elementCount;
+    const currElementCount = currAnalysis.elementCount;
     let insertedLineCount = 0;
     let deletedLineCount = 0;
     for (const line of lines) {
@@ -215,8 +157,6 @@ export function computeDiffSummary(prevXml: string | undefined, currXml: string 
     }
 
     return {
-        segments,
-        lines,
         rows,
         prevElementCount,
         currElementCount,

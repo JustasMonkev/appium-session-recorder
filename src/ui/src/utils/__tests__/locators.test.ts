@@ -1,24 +1,43 @@
 import { describe, it, expect } from 'vitest';
-import { generateLocators } from '../locators';
+import { generateSelectorCandidates } from '../../../../core/selectors/generate-candidates';
 import type { ParsedElement } from '../../types';
 
 function createMockElement(overrides: Partial<ParsedElement> = {}): ParsedElement {
-    return {
+    const element: ParsedElement = {
+        elementRef: 'ios:/Application[1]/Button[1]',
+        index: 0,
+        platform: 'ios',
         type: 'XCUIElementTypeButton',
         name: '',
         label: '',
         value: '',
+        text: '',
+        resourceId: '',
+        contentDesc: '',
         enabled: true,
         visible: true,
         accessible: false,
+        clickable: false,
         x: 0,
         y: 0,
         width: 100,
         height: 50,
         xpath: '/Application[1]/Button[1]',
-        node: document.createElement('div') as unknown as Element,
+        attributes: {},
+        node: document.createElement('div'),
         ...overrides,
     };
+    if (!overrides.attributes) {
+        const attributes: Record<string, string> = { type: element.type };
+        if (element.name) attributes.name = element.name;
+        if (element.label) attributes.label = element.label;
+        element.attributes = attributes;
+    }
+    return element;
+}
+
+function generateLocators(element: ParsedElement) {
+    return generateSelectorCandidates(element).map(({ strategy, value }) => ({ strategy, value }));
 }
 
 describe('generateLocators', () => {
@@ -219,7 +238,6 @@ describe('generateLocators', () => {
             });
             const locators = generateLocators(element);
 
-            // Should only have xpath and class name
             expect(locators).toHaveLength(2);
             expect(locators.map(l => l.strategy)).toEqual(['xpath', 'class name']);
         });
@@ -233,12 +251,17 @@ describe('generateLocators', () => {
             });
             const locators = generateLocators(element);
 
-            // Verify expected order based on implementation
             const strategies = locators.map(l => l.strategy);
-            expect(strategies[0]).toBe('accessibility id'); // from name
-            expect(strategies[1]).toBe('accessibility id'); // from label
-            expect(strategies[2]).toBe('xpath');
-            expect(strategies[3]).toBe('class name');
+            expect(strategies).toEqual([
+                'accessibility id',
+                'accessibility id',
+                '-ios predicate string',
+                '-ios class chain',
+                '-ios predicate string',
+                'xpath',
+                'xpath',
+                'class name',
+            ]);
         });
     });
 
@@ -271,9 +294,10 @@ describe('generateLocators', () => {
             const element = createMockElement({ name: 'test"button' });
             const locators = generateLocators(element);
 
-            // The current implementation doesn't escape quotes, but we verify it includes them
-            const predicate = locators.find(l => l.strategy === '-ios predicate string');
-            expect(predicate).toBeDefined();
+            expect(locators).toContainEqual({
+                strategy: '-ios predicate string',
+                value: 'name == "test\\"button"',
+            });
         });
 
         it('should handle unicode characters', () => {

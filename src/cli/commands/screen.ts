@@ -1,6 +1,6 @@
-import { AppiumCommandClient } from '../../core/appium/client';
+import { AppiumCommandClient, AppiumCommandError } from '../../core/appium/client';
 import { parseSource } from '../../core/xml/parse-source';
-import { ensureNoUnexpectedFlags, expectStringFlag, parseFlags, parseNumberFlag } from '../arg-parser';
+import { ensureNoUnexpectedFlags, expectStringFlag, parseBooleanFlag, parseFlags, parseNumberFlag } from '../arg-parser';
 import type { CommandExecutionResult } from './types';
 
 export async function runScreenSnapshot(args: string[]): Promise<CommandExecutionResult> {
@@ -15,6 +15,9 @@ export async function runScreenSnapshot(args: string[]): Promise<CommandExecutio
 
     const client = new AppiumCommandClient(appiumUrl);
     const { source, screenshot } = await client.captureState(sessionId);
+    if (!source || !screenshot) {
+        throw new AppiumCommandError('Appium snapshot was incomplete', 'APPIUM_PARTIAL_CAPTURE', 502);
+    }
     const parsedSource = parseSource(source);
 
     return {
@@ -41,7 +44,7 @@ export async function runScreenElements(args: string[]): Promise<CommandExecutio
     const appiumUrl = expectStringFlag('appium-url', parsed.flags['appium-url']);
     const sessionId = expectStringFlag('session-id', parsed.flags['session-id']);
     const limit = parseNumberFlag('limit', parsed.flags.limit);
-    const onlyActionable = parsed.flags['only-actionable'] === true;
+    const onlyActionable = parseBooleanFlag('only-actionable', parsed.flags['only-actionable']);
 
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
         throw new Error('--limit must be a positive integer');

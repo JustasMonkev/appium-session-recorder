@@ -1,7 +1,6 @@
-import { type Component, createMemo, createSignal, For, Show } from 'solid-js';
+import { type Component, createMemo, createSignal, For, Show, onCleanup } from 'solid-js';
 import type { DiffRow, Interaction, DiffSummary } from '../types';
 import { computeDiffSummary } from '../utils/diff';
-import { formatXml } from '../utils/format-xml';
 import './DiffPanel.css';
 
 type DiffPanelProps = {
@@ -12,6 +11,7 @@ type DiffPanelProps = {
 export const DiffPanel: Component<DiffPanelProps> = (props) => {
     const [changesOnly, setChangesOnly] = createSignal(true);
     const [copiedSide, setCopiedSide] = createSignal<'previous' | 'current' | null>(null);
+    let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
     const diffSummary = createMemo((): DiffSummary | null => {
         if (!props.previous) return null;
@@ -23,6 +23,7 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
         if (!summary) return false;
         return summary.changedLineCount > 0;
     });
+    const diffUnavailable = createMemo(() => Boolean(props.previous && !diffSummary()));
 
     const visibleRows = createMemo<DiffRow[]>(() => {
         const summary = diffSummary();
@@ -34,19 +35,29 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
 
     const formatLineNumber = (value: number | null) => value == null ? '' : String(value);
     const rowClassName = (row: DiffRow) => {
-        if (row.previousText && row.currentText && row.previousText !== row.currentText) return 'diff-row diff-row-modified';
-        if (row.previousText && !row.currentText) return 'diff-row diff-row-deleted';
-        if (!row.previousText && row.currentText) return 'diff-row diff-row-inserted';
+        if (row.previousText !== null && row.currentText !== null && row.previousText !== row.currentText) {
+            return 'diff-row diff-row-modified';
+        }
+        if (row.previousText !== null && row.currentText === null) return 'diff-row diff-row-deleted';
+        if (row.previousText === null && row.currentText !== null) return 'diff-row diff-row-inserted';
         return 'diff-row diff-row-equal';
     };
     const copyXml = async (side: 'previous' | 'current') => {
         const xml = side === 'previous' ? props.previous?.source : props.current.source;
         if (!xml) return;
 
-        await navigator.clipboard.writeText(formatXml(xml));
-        setCopiedSide(side);
-        setTimeout(() => setCopiedSide((value) => value === side ? null : value), 2000);
+        try {
+            await navigator.clipboard.writeText(xml);
+            setCopiedSide(side);
+            if (copiedTimer) clearTimeout(copiedTimer);
+            copiedTimer = setTimeout(() => setCopiedSide(null), 2000);
+        } catch {
+            setCopiedSide(null);
+        }
     };
+    onCleanup(() => {
+        if (copiedTimer) clearTimeout(copiedTimer);
+    });
 
     return (
         <div class="diff-panel">
@@ -133,8 +144,12 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
                 <div class="diff-empty">No previous action to compare with.</div>
             </Show>
 
-            <Show when={props.previous && !hasChanges()}>
-                <div class="diff-empty">No XML changes between steps.</div>
+            <Show when={diffUnavailable()}>
+                <div class="diff-empty">Page source diff unavailable because a source is missing, invalid, or too large.</div>
+            </Show>
+
+            <Show when={props.previous && diffSummary() && !hasChanges()}>
+                <div class="diff-empty">No page source changes between steps.</div>
             </Show>
 
             <Show when={props.previous && hasChanges()}>
@@ -146,22 +161,22 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
                                 class="diff-copy-btn"
                                 onClick={() => void copyXml('previous')}
                             >
-                                {copiedSide() === 'previous' ? 'Copied Previous XML' : 'Copy Previous XML'}
+                                {copiedSide() === 'previous' ? 'Copied Previous Source' : 'Copy Previous Source'}
                             </button>
                             <button
                                 type="button"
                                 class="diff-copy-btn"
                                 onClick={() => void copyXml('current')}
                             >
-                                {copiedSide() === 'current' ? 'Copied Current XML' : 'Copy Current XML'}
+                                {copiedSide() === 'current' ? 'Copied Current Source' : 'Copy Current Source'}
                             </button>
                         </div>
                     </div>
                     <div class="diff-source-head">
                         <span>Prev</span>
-                        <span>Previous XML</span>
+                        <span>Previous Source</span>
                         <span>Curr</span>
-                        <span>Current XML</span>
+                        <span>Current Source</span>
                     </div>
                     <div class="diff-source-body">
                         <For each={visibleRows()}>

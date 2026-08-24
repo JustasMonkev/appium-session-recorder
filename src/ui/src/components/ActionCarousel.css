@@ -89,16 +89,6 @@
     color: var(--color-accent-success);
 }
 
-.carousel-method.GET {
-    background: #FFF3E0;
-    color: var(--color-accent-warning);
-}
-
-.carousel-method.DELETE {
-    background: #FDECEB;
-    color: var(--color-accent-error);
-}
-
 .carousel-path {
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
@@ -111,6 +101,11 @@
 .carousel-time {
     font-size: var(--font-size-xs);
     color: var(--color-text-tertiary);
+}
+
+.carousel-capture {
+    font-size: var(--font-size-xs);
+    color: var(--color-accent-primary);
 }
 
 .carousel-element {

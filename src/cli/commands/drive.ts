@@ -1,12 +1,20 @@
-import { AppiumCommandClient } from '../../core/appium/client';
-import { ensureNoUnexpectedFlags, expectStringFlag, parseFlags, parseNumberFlag } from '../arg-parser';
+import { AppiumCommandClient, MIN_GESTURE_DURATION_MS } from '../../core/appium/client';
+import { ensureNoUnexpectedFlags, expectStringFlag, parseBooleanFlag, parseFlags, parseNumberFlag } from '../arg-parser';
 
 const SCROLL_DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 type ScrollDirection = (typeof SCROLL_DIRECTIONS)[number];
 import type { CommandExecutionResult } from './types';
 
+function isScrollDirection(value: string): value is ScrollDirection {
+    return SCROLL_DIRECTIONS.some(direction => direction === value);
+}
+
 function parsePoint(name: string, value: string): { x: number; y: number } {
-    const [xRaw, yRaw] = value.split(',');
+    const parts = value.split(',');
+    if (parts.length !== 2 || parts.some(part => !/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(part))) {
+        throw new Error(`--${name} must be in format x,y`);
+    }
+    const [xRaw, yRaw] = parts;
     const x = Number(xRaw);
     const y = Number(yRaw);
 
@@ -15,6 +23,17 @@ function parsePoint(name: string, value: string): { x: number; y: number } {
     }
 
     return { x, y };
+}
+
+function parseDuration(value: string | boolean | undefined): number {
+    if (typeof value === 'string' && !Number.isFinite(Number(value))) {
+        throw new Error(`--duration-ms must be an integer of at least ${MIN_GESTURE_DURATION_MS}`);
+    }
+    const duration = parseNumberFlag('duration-ms', value) ?? 300;
+    if (!Number.isInteger(duration) || duration < MIN_GESTURE_DURATION_MS) {
+        throw new Error(`--duration-ms must be an integer of at least ${MIN_GESTURE_DURATION_MS}`);
+    }
+    return duration;
 }
 
 export async function runDriveTap(args: string[]): Promise<CommandExecutionResult> {
@@ -50,7 +69,7 @@ export async function runDriveType(args: string[]): Promise<CommandExecutionResu
     const using = expectStringFlag('using', parsed.flags.using);
     const value = expectStringFlag('value', parsed.flags.value);
     const text = expectStringFlag('text', parsed.flags.text);
-    const clearFirst = parsed.flags['clear-first'] === true;
+    const clearFirst = parseBooleanFlag('clear-first', parsed.flags['clear-first']);
 
     const client = new AppiumCommandClient(appiumUrl);
     await client.type(sessionId, using, value, text, clearFirst);
@@ -91,11 +110,7 @@ export async function runDriveSwipe(args: string[]): Promise<CommandExecutionRes
     const sessionId = expectStringFlag('session-id', parsed.flags['session-id']);
     const from = parsePoint('from', expectStringFlag('from', parsed.flags.from));
     const to = parsePoint('to', expectStringFlag('to', parsed.flags.to));
-    const durationMs = parseNumberFlag('duration-ms', parsed.flags['duration-ms']) ?? 300;
-
-    if (!Number.isFinite(durationMs) || durationMs < 1) {
-        throw new Error('--duration-ms must be a positive number');
-    }
+    const durationMs = parseDuration(parsed.flags['duration-ms']);
 
     const client = new AppiumCommandClient(appiumUrl);
     await client.swipe(sessionId, from, to, durationMs);
@@ -122,18 +137,14 @@ export async function runDriveScroll(args: string[]): Promise<CommandExecutionRe
     const appiumUrl = expectStringFlag('appium-url', parsed.flags['appium-url']);
     const sessionId = expectStringFlag('session-id', parsed.flags['session-id']);
     const direction = expectStringFlag('direction', parsed.flags.direction);
-    const durationMs = parseNumberFlag('duration-ms', parsed.flags['duration-ms']) ?? 300;
+    const durationMs = parseDuration(parsed.flags['duration-ms']);
 
-    if (!SCROLL_DIRECTIONS.includes(direction as ScrollDirection)) {
+    if (!isScrollDirection(direction)) {
         throw new Error(`--direction must be one of: ${SCROLL_DIRECTIONS.join(', ')}`);
     }
 
-    if (!Number.isFinite(durationMs) || durationMs < 1) {
-        throw new Error('--duration-ms must be a positive number');
-    }
-
     const client = new AppiumCommandClient(appiumUrl);
-    await client.scroll(sessionId, direction as ScrollDirection, durationMs);
+    await client.scroll(sessionId, direction, durationMs);
 
     return {
         command: 'drive.scroll',

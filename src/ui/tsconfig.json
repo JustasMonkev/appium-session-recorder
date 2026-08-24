@@ -16,15 +16,11 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
-        "skipLibCheck": true,
-        "paths": {
-            "@/*": [
-                "./src/*"
-            ]
-        }
+        "skipLibCheck": true
     },
     "include": [
-        "src"
+        "src",
+        "../../tests/ui/**/*.ts"
     ],
     "references": [
         {

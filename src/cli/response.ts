@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import path from 'node:path';
 import type { CommandResponse } from '../core/types';
 
@@ -34,11 +35,12 @@ export async function emitResponse(response: CommandResponse, options: CliOutput
         ? `${JSON.stringify(response, null, 2)}\n`
         : `${JSON.stringify(response)}\n`;
 
-    process.stdout.write(output);
-
     if (options.output) {
         const outPath = path.resolve(options.output);
         await mkdir(path.dirname(outPath), { recursive: true });
         await writeFile(outPath, output, 'utf8');
+        return;
     }
+
+    if (!process.stdout.write(output)) await once(process.stdout, 'drain');
 }

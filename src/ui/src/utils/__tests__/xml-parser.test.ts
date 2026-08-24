@@ -1,7 +1,121 @@
 import { describe, it, expect } from 'vitest';
-import { parseXmlSource } from '../xml-parser';
+import { parseXmlDocument, parseXmlSource } from '../xml-parser';
+import { generateSelectorCandidates } from '../../../../core/selectors/generate-candidates';
+import { parseSource } from '../../../../core/xml/parse-source';
+
+function generateLocators(element: Parameters<typeof generateSelectorCandidates>[0]) {
+    return generateSelectorCandidates(element).map(({ strategy, value }) => ({ strategy, value }));
+}
 
 describe('parseXmlSource', () => {
+    it('matches the core parser for recovered browser HTML', () => {
+        const html = `<!doctype html><html><head><meta charset=utf-8></head><body>
+            <ul><li id=first title="A&nbsp;B">First<li id=second>Second</ul>
+            <noscript><button id=fallback>Fallback</button></noscript>
+            <svg><circle id=dot></circle></svg>
+            <div hidden><button id=hidden-child>Hidden</button></div>
+            <fieldset disabled><legend><input id=legend-child></legend><legend><input id=second-legend-child></legend><input id=blocked></fieldset>
+            <select disabled><option id=select-option>Disabled</option></select>
+            <select><optgroup disabled><option id=group-option>Disabled</option></optgroup></select>
+            <input id=email disabled><button id=save class=primary>Save</button>
+        </body></html>`;
+        const parsed = parseXmlDocument(html);
+        const core = parseSource(html).elements;
+        const values = (elements: typeof core) => elements.map(({
+            type, xpath, resourceId, attributes, enabled, clickable, visible,
+        }) => ({ type, xpath, resourceId, attributes, enabled, clickable, visible }));
+
+        expect(values(parsed.elements)).toEqual(values(core));
+        expect(parsed.elements.find(element => element.resourceId === 'email')).toMatchObject({
+            type: 'input', enabled: false, clickable: false, attributes: { disabled: '' },
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'hidden-child')).toMatchObject({
+            visible: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'legend-child')).toMatchObject({
+            enabled: true, clickable: true,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'second-legend-child')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'blocked')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'select-option')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'group-option')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        const button = parsed.elements.find(element => element.resourceId === 'save')!;
+        expect(parsed.doc.evaluate(
+            button.xpath,
+            parsed.doc,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+        ).singleNodeValue).toBe(button.node);
+        const circle = parsed.elements.find(element => element.resourceId === 'dot')!;
+        expect(circle.xpath).toBe(
+            '/html[1]/body[1]/*[local-name(.)="svg"][1]/*[local-name(.)="circle"][1]',
+        );
+        expect(parsed.doc.evaluate(
+            circle.xpath,
+            parsed.doc,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+        ).singleNodeValue).toBe(circle.node);
+    });
+
+    it('keeps core and UI HTML behavior aligned across deterministic generated documents', () => {
+        let state = 0x51f15e;
+        const next = () => (state = (state * 1_664_525 + 1_013_904_223) >>> 0);
+
+        for (let caseIndex = 0; caseIndex < 100; caseIndex++) {
+            const children = Array.from({ length: 1 + next() % 20 }, (_, index) => {
+                const id = `item-${caseIndex}-${index}`;
+                if (next() % 3 === 0) return `<input id=${id}${next() % 2 ? ' disabled' : ''}>`;
+                const tag = next() % 2 ? 'button' : 'div';
+                return `<${tag} id=${id} class="c${next() % 5}">&amp;</${tag}>`;
+            }).join('');
+            const html = `<!doctype html><html><body><ul><li id=a>A<li id=b>B</ul>${children}</body></html>`;
+            const core = parseSource(html).elements.map(element => ({
+                type: element.type,
+                xpath: element.xpath,
+                resourceId: element.resourceId,
+                enabled: element.enabled,
+                clickable: element.clickable,
+                attributes: element.attributes,
+            }));
+            const ui = parseXmlSource(html).map(element => ({
+                type: element.type,
+                xpath: element.xpath,
+                resourceId: element.resourceId,
+                enabled: element.enabled,
+                clickable: element.clickable,
+                attributes: element.attributes,
+            }));
+
+            expect(ui).toEqual(core);
+        }
+    });
+
+    it('evaluates XPath locators for escaped HTML element names', () => {
+        const html = '<html><body><x"y id=quoted></x"y><x:y id=colon></x:y><math-α id=unicode></math-α></body></html>';
+        const parsed = parseXmlDocument(html);
+        const core = parseSource(html).elements;
+
+        for (const id of ['quoted', 'colon', 'unicode']) {
+            const element = parsed.elements.find(candidate => candidate.resourceId === id)!;
+            expect(element.xpath).toBe(core.find(candidate => candidate.resourceId === id)?.xpath);
+            expect(parsed.doc.evaluate(
+                element.xpath,
+                parsed.doc,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+            ).singleNodeValue).toBe(element.node);
+        }
+    });
+
     describe('basic parsing', () => {
         it('should parse empty XML', () => {
             const xml = '<root></root>';
@@ -24,9 +138,49 @@ describe('parseXmlSource', () => {
 
             expect(result[0].type).toBe('CustomElement');
         });
+
+        it('parses a valid element literally named parsererror', () => {
+            const result = parseXmlSource('<parsererror><node/></parsererror>');
+
+            expect(result.map(element => element.type)).toEqual(['parsererror', 'node']);
+        });
+
+        it('parses declared namespace prefixes and rejects invalid bindings', () => {
+            const valid = parseXmlSource('<root xmlns:p="urn:test"><p:a p:x="1"/></root>');
+            expect(valid[1]).toMatchObject({ type: 'p:a', attributes: { 'p:x': '1' } });
+            expect(parseXmlSource(
+                '<root xmlns:xml="http://www.w3.org/XML/1998/namespac&#x65;" xml:lang="en"/>',
+            )[0].attributes['xml:lang']).toBe('en');
+            for (const xml of [
+                '<p:a/>',
+                '<a p:x="1"/>',
+                '<a xmlns:xml="bad"/>',
+                '<a xmlns:xmlns="urn:test"/>',
+                '<a xmlns:p="urn:test" xmlns:q="urn:test" p:x="1" q:x="2"/>',
+                '<a xmlns:p="http://www.w3.org/2000/xmln&#x73;/"/>',
+            ]) {
+                expect(parseXmlSource(xml)).toEqual([]);
+            }
+        });
+
+        it.each([
+            '<root>&bogus;</root>',
+            '<root a="&bogus;"/>',
+            '<root><!--x--y--></root>',
+            '<root xmlns:x=""><x:a/></root>',
+        ])('rejects malformed XML instead of parsing the browser error document: %s', xml => {
+            expect(parseXmlSource(xml)).toEqual([]);
+        });
     });
 
     describe('element attributes', () => {
+        it('normalizes literal XML whitespace and decodes numeric references once', () => {
+            const xml = '<element text="literal\tline\nbreak&#10;hex&#x9;&amp;#10;"></element>';
+            const result = parseXmlSource(xml);
+
+            expect(result[0].text).toBe('literal line break\nhex\t&#10;');
+        });
+
         it('should parse name attribute', () => {
             const xml = '<element name="LoginButton"></element>';
             const result = parseXmlSource(xml);
@@ -91,6 +245,12 @@ describe('parseXmlSource', () => {
             expect(result[0].visible).toBe(false);
         });
 
+        it('treats visible="0" and displayed="0" as not visible', () => {
+            const result = parseXmlSource('<root><a visible="0"/><b displayed="0"/><c visible="1"/></root>');
+
+            expect(result.slice(1).map(element => element.visible)).toEqual([false, false, true]);
+        });
+
         it('should default string attributes to empty string', () => {
             const xml = '<element></element>';
             const result = parseXmlSource(xml);
@@ -143,7 +303,7 @@ describe('parseXmlSource', () => {
             const xml = '<root type="XCUIElementTypeApplication"></root>';
             const result = parseXmlSource(xml);
 
-            expect(result[0].xpath).toBe('/XCUIElementTypeApplication[1]');
+            expect(result[0].xpath).toBe('/root[1]');
         });
 
         it('should generate nested xpath', () => {
@@ -156,9 +316,9 @@ describe('parseXmlSource', () => {
             `;
             const result = parseXmlSource(xml);
 
-            expect(result[0].xpath).toBe('/Application[1]');
-            expect(result[1].xpath).toBe('/Application[1]/Window[1]');
-            expect(result[2].xpath).toBe('/Application[1]/Window[1]/Button[1]');
+            expect(result[0].xpath).toBe('/app[1]');
+            expect(result[1].xpath).toBe('/app[1]/window[1]');
+            expect(result[2].xpath).toBe('/app[1]/window[1]/button[1]');
         });
 
         it('should generate xpath with sibling indexing', () => {
@@ -171,9 +331,9 @@ describe('parseXmlSource', () => {
             `;
             const result = parseXmlSource(xml);
 
-            expect(result[1].xpath).toBe('/Application[1]/Button[1]');
-            expect(result[2].xpath).toBe('/Application[1]/Button[2]');
-            expect(result[3].xpath).toBe('/Application[1]/Button[3]');
+            expect(result[1].xpath).toBe('/app[1]/button[1]');
+            expect(result[2].xpath).toBe('/app[1]/button[2]');
+            expect(result[3].xpath).toBe('/app[1]/button[3]');
         });
 
         it('should handle mixed child types', () => {
@@ -186,9 +346,9 @@ describe('parseXmlSource', () => {
             `;
             const result = parseXmlSource(xml);
 
-            expect(result[1].xpath).toBe('/Application[1]/Button[1]');
-            expect(result[2].xpath).toBe('/Application[1]/Text[1]');
-            expect(result[3].xpath).toBe('/Application[1]/Button[2]');
+            expect(result[1].xpath).toBe('/app[1]/button[1]');
+            expect(result[2].xpath).toBe('/app[1]/text[1]');
+            expect(result[3].xpath).toBe('/app[1]/button[2]');
         });
     });
 
@@ -229,6 +389,67 @@ describe('parseXmlSource', () => {
 
             expect(result.map(e => e.type)).toEqual(['root', 'a', 'b', 'c']);
         });
+
+        it('builds absolute XPath locators that select the parsed DOM node', () => {
+            const parsed = parseXmlDocument(
+                '<app type="Application"><node class="android.widget.Button" text="Continue" /></app>',
+            );
+            const button = parsed.elements[1];
+            const xpath = generateLocators(button).find(locator => (
+                locator.strategy === 'xpath' && locator.value === '/app[1]/node[1]'
+            ));
+
+            expect(xpath?.value).toBe('/app[1]/node[1]');
+            expect(parsed.doc.evaluate(
+                xpath!.value,
+                parsed.doc,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+            ).singleNodeValue).toBe(button.node);
+        });
+
+        it('builds generic XPath locators that select nodes with class-derived and tag-derived types', () => {
+            const parsed = parseXmlDocument(
+                '<Root><node class="Button" name="go"/><Button name="tagged"/></Root>',
+            );
+
+            for (const element of parsed.elements.slice(1)) {
+                const xpath = generateLocators(element).find(locator => (
+                    locator.strategy === 'xpath' && locator.value.startsWith('//')
+                ));
+                expect(xpath).toBeDefined();
+                expect(parsed.doc.evaluate(
+                    xpath!.value,
+                    parsed.doc,
+                    null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,
+                ).singleNodeValue).toBe(element.node);
+            }
+        });
+
+        it('indexes inherited-property tag names correctly', () => {
+            const result = parseXmlSource('<root><__proto__/><__proto__/><constructor/><constructor/></root>');
+            expect(result.slice(1).map(element => element.xpath)).toEqual([
+                '/root[1]/__proto__[1]',
+                '/root[1]/__proto__[2]',
+                '/root[1]/constructor[1]',
+                '/root[1]/constructor[2]',
+            ]);
+        });
+
+        it('round-trips parser-sensitive tag and attribute names', () => {
+            const names = [
+                '__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf',
+                '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__', '_asr_',
+            ];
+            const xml = `<root>${names.map((name, index) => `<${name} ${name}="v${index}"/>`).join('')}</root>`;
+            const elements = parseXmlSource(xml).slice(1);
+
+            expect(elements.map(element => element.xpath.split('/').slice(-1)[0])).toEqual(
+                names.map(name => `${name}[1]`),
+            );
+            names.forEach((name, index) => expect(elements[index].attributes[name]).toBe(`v${index}`));
+        });
     });
 
     describe('real-world Appium XML', () => {
@@ -248,15 +469,16 @@ describe('parseXmlSource', () => {
             expect(result).toHaveLength(4);
 
             const button = result.find(e => e.type === 'XCUIElementTypeButton');
-            expect(button).toBeDefined();
-            expect(button!.name).toBe('loginButton');
-            expect(button!.label).toBe('Log In');
-            expect(button!.enabled).toBe(true);
-            expect(button!.visible).toBe(true);
-            expect(button!.x).toBe(20);
-            expect(button!.y).toBe(400);
-            expect(button!.width).toBe(350);
-            expect(button!.height).toBe(44);
+            expect(button).toMatchObject({
+                name: 'loginButton',
+                label: 'Log In',
+                enabled: true,
+                visible: true,
+                x: 20,
+                y: 400,
+                width: 350,
+                height: 44,
+            });
         });
 
         it('should parse Android page source', () => {
@@ -277,16 +499,36 @@ describe('parseXmlSource', () => {
                 'android.widget.Button',
             ]);
         });
+
+        it('should parse standard Android strategy attributes and bounds', () => {
+            const result = parseXmlSource(`
+                <hierarchy>
+                    <node class="android.widget.Button" text="Continue"
+                        resource-id="com.example:id/continue" content-desc="continueButton"
+                        bounds="[50,1900][1030,2050]" enabled="true" clickable="true" />
+                </hierarchy>
+            `);
+
+            expect(result[1]).toMatchObject({
+                platform: 'android',
+                type: 'android.widget.Button',
+                text: 'Continue',
+                resourceId: 'com.example:id/continue',
+                contentDesc: 'continueButton',
+                x: 50,
+                y: 1900,
+                width: 980,
+                height: 150,
+                clickable: true,
+            });
+        });
     });
 
     describe('edge cases', () => {
         it('should handle empty document', () => {
             const xml = '';
-            // parseXmlSource expects valid XML, empty string may produce error
-            // In real usage, empty strings are filtered out before calling
             const result = parseXmlSource(xml);
-            // DOMParser will create an error document or empty result
-            expect(Array.isArray(result)).toBe(true);
+            expect(result).toEqual([]);
         });
 
         it('should handle deeply nested elements', () => {
@@ -305,7 +547,7 @@ describe('parseXmlSource', () => {
             const result = parseXmlSource(xml);
 
             expect(result).toHaveLength(5);
-            expect(result[4].xpath).toBe('/L1[1]/L2[1]/L3[1]/L4[1]/L5[1]');
+            expect(result[4].xpath).toBe('/level1[1]/level2[1]/level3[1]/level4[1]/level5[1]');
         });
 
         it('should handle elements with special characters in attributes', () => {
@@ -324,8 +566,8 @@ describe('parseXmlSource', () => {
             const xml = `<root>${children}</root>`;
             const result = parseXmlSource(xml);
 
-            expect(result).toHaveLength(101); // root + 100 items
-            expect(result[100].xpath).toBe('/root[1]/Item[100]');
+            expect(result).toHaveLength(101);
+            expect(result[100].xpath).toBe('/root[1]/item[100]');
         });
 
         it('should include node reference in result', () => {
@@ -334,6 +576,32 @@ describe('parseXmlSource', () => {
 
             expect(result[0].node).toBeDefined();
             expect(result[0].node instanceof Element).toBe(true);
+        });
+
+        it('should bound 6,000 nested elements without a RangeError', () => {
+            const depth = 6_000;
+            const xml = `${'<Node>'.repeat(depth)}${'</Node>'.repeat(depth)}`;
+
+            expect(parseXmlSource(xml)).toEqual([]);
+        });
+
+        it('should reject input above 10,000 elements', () => {
+            const xml = `<Root>${'<Item />'.repeat(10_005)}</Root>`;
+
+            expect(parseXmlSource(xml)).toEqual([]);
+        });
+
+        it('should reject oversized XML before traversal', () => {
+            const xml = `<Root>${'x'.repeat(10_000_000)}</Root>`;
+
+            expect(parseXmlSource(xml)).toEqual([]);
+        });
+
+        it('rejects XML whose derived absolute paths exceed the aggregate budget', () => {
+            const tag = `T${'x'.repeat(511)}`;
+            const xml = `${`<${tag}>`.repeat(95)}${`<${tag}/>` .repeat(140)}${`</${tag}>`.repeat(95)}`;
+
+            expect(parseXmlSource(xml)).toEqual([]);
         });
     });
 });

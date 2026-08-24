@@ -1,6 +1,10 @@
 import type { ParsedElement, SelectorCandidate } from '../types';
 import { compileCandidateMatcher } from './score-candidates';
 
+export const MAX_STABILITY_SNAPSHOTS = 10;
+export const MAX_STABILITY_ELEMENTS = 2_000;
+export const MAX_STABILITY_SOURCE_CHARS = 512 * 1024;
+
 export type StabilityResult = {
     candidate: SelectorCandidate;
     /** Number of consecutive steps where the selector resolves to exactly one element */
@@ -40,8 +44,9 @@ export function evaluateSelectorStability(
 
             if (matchCount === 1) {
                 stableSteps++;
-            } else if (firstFailureStep === 0) {
+            } else {
                 firstFailureStep = i + 1; // 1-based
+                break;
             }
         }
 
@@ -53,11 +58,7 @@ export function evaluateSelectorStability(
         };
     });
 
-    // Sort by most stable steps descending, then by latest first-failure
-    results.sort((a, b) => {
-        if (b.stableSteps !== a.stableSteps) return b.stableSteps - a.stableSteps;
-        return a.firstFailureStep - b.firstFailureStep; // 0 means never fails, sorts first
-    });
+    results.sort((a, b) => b.stableSteps - a.stableSteps);
 
     return {
         results,
