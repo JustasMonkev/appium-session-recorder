@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
-import type { ParsedElement, ParsedSource, Platform } from '../types';
-
-type XmlNode = Record<string, unknown>;
+import type { ParsedElement, ParsedSource } from '../types';
+import { appendXmlPath, isXmlWithinLimits, MAX_XML_DEPTH, MAX_XML_ELEMENTS } from './xml-limits';
+import { normalizeParsedElement, resolveSourcePlatform } from './normalize-element';
 
 const parser = new XMLParser({
     ignoreAttributes: false,
@@ -10,200 +10,125 @@ const parser = new XMLParser({
     parseAttributeValue: false,
     trimValues: false,
     textNodeName: '#text',
-    preserveOrder: false,
+    preserveOrder: true,
+    processEntities: false,
+    transformTagName: protectXmlName,
+    transformAttributeName: protectXmlName,
 });
 
-function asString(value: unknown): string {
-    if (value === undefined || value === null) return '';
-    return String(value);
+const PROTECTED_NAME_PREFIX = '\0asr:';
+const CRITICAL_XML_NAMES = new Set([
+    '__proto__',
+    'constructor',
+    'prototype',
+    'hasOwnProperty',
+    'toString',
+    'valueOf',
+    '__defineGetter__',
+    '__defineSetter__',
+    '__lookupGetter__',
+    '__lookupSetter__',
+]);
+
+function protectXmlName(name: string): string {
+    if (name.startsWith(PROTECTED_NAME_PREFIX) || !CRITICAL_XML_NAMES.has(name)) return name;
+    return PROTECTED_NAME_PREFIX + Array.from(name, character => character.codePointAt(0)!.toString(16)).join('_');
 }
 
-function asBoolean(value: unknown): boolean {
-    if (typeof value === 'boolean') return value;
-    return asString(value).toLowerCase() === 'true' || asString(value) === '1';
+function restoreXmlName(name: string): string {
+    if (!name.startsWith(PROTECTED_NAME_PREFIX)) return name;
+    const encoded = name.slice(PROTECTED_NAME_PREFIX.length);
+    if (!/^[\da-f]+(?:_[\da-f]+)*$/i.test(encoded)) return name;
+    return encoded.split('_').map(codePoint => String.fromCodePoint(Number.parseInt(codePoint, 16))).join('');
 }
 
-function asNumber(value: unknown): number {
-    const n = Number(asString(value));
-    return Number.isFinite(n) ? n : 0;
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    // SAFETY: the runtime guard above narrows value to a non-array object with string-key access.
+    return value as Record<string, unknown>;
 }
 
-function parseAndroidBounds(bounds: string): { x: number; y: number; width: number; height: number } {
-    const match = bounds.match(/\[(\-?\d+),(\-?\d+)\]\[(\-?\d+),(\-?\d+)\]/);
-    if (!match) {
-        return { x: 0, y: 0, width: 0, height: 0 };
-    }
-
-    const x1 = Number(match[1]);
-    const y1 = Number(match[2]);
-    const x2 = Number(match[3]);
-    const y2 = Number(match[4]);
-
-    return {
-        x: x1,
-        y: y1,
-        width: Math.max(0, x2 - x1),
-        height: Math.max(0, y2 - y1),
-    };
+function normalizeXmlAttribute(value: string): string {
+    const whitespaceNormalized = value.replace(/[\t\n\r]/g, ' ');
+    return whitespaceNormalized.replace(
+        /&(?:#(\d+)|#x([\da-fA-F]+)|(amp|lt|gt|quot|apos));/g,
+        (reference, decimal: string | undefined, hexadecimal: string | undefined, name: string | undefined) => {
+            if (decimal) return String.fromCodePoint(Number.parseInt(decimal, 10));
+            if (hexadecimal) return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+            if (name === 'amp') return '&';
+            if (name === 'lt') return '<';
+            if (name === 'gt') return '>';
+            if (name === 'quot') return '"';
+            if (name === 'apos') return "'";
+            return reference;
+        },
+    );
 }
 
-function detectPlatform(type: string, attrs: Record<string, string>): Platform {
-    if (type.startsWith('XCUIElementType') || attrs.type?.startsWith('XCUIElementType')) {
-        return 'ios';
-    }
+function xmlElement(value: unknown) {
+    const entry = asRecord(value);
+    const rawTag = entry && Object.keys(entry).find(key => (
+        key !== ':@' && !key.startsWith('#') && !key.startsWith('?') && !key.startsWith('!')
+    ));
+    const children = rawTag && entry?.[rawTag];
+    if (!entry || !rawTag || !Array.isArray(children)) return undefined;
 
-    if (
-        type.startsWith('android.') ||
-        attrs.class?.startsWith('android.') ||
-        attrs['resource-id'] ||
-        attrs['content-desc']
-    ) {
-        return 'android';
-    }
-
-    return 'unknown';
-}
-
-function extractAttributes(node: XmlNode): Record<string, string> {
-    const attrs: Record<string, string> = {};
-
-    for (const [key, value] of Object.entries(node)) {
-        if (value === null || value === undefined || key === '#text') continue;
-        if (Array.isArray(value)) continue;
-        if (typeof value === 'object') continue;
-        attrs[key] = String(value);
-    }
-
-    return attrs;
-}
-
-function extractChildren(node: XmlNode): Array<{ tag: string; child: XmlNode }> {
-    const children: Array<{ tag: string; child: XmlNode }> = [];
-
-    for (const [key, value] of Object.entries(node)) {
-        if (key === '#text' || value === null || value === undefined) continue;
-
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                if (item && typeof item === 'object') {
-                    children.push({ tag: key, child: item as XmlNode });
-                }
-            }
-            continue;
-        }
-
-        if (typeof value === 'object') {
-            children.push({ tag: key, child: value as XmlNode });
-        }
-    }
-
-    return children;
-}
-
-function makeElementRef(platform: Platform, xpath: string): string {
-    return `${platform}:${xpath}`;
+    const attributes = Object.fromEntries(
+        Object.entries(asRecord(entry[':@']) ?? {})
+            .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+            .map(([name, value]) => [restoreXmlName(name), normalizeXmlAttribute(value)]),
+    );
+    return { tag: restoreXmlName(rawTag), children, attributes };
 }
 
 export function parseSource(xmlString: string): ParsedSource {
-    if (!xmlString || !xmlString.trim()) {
+    if (!isXmlWithinLimits(xmlString)) {
         return { platform: 'unknown', elements: [] };
     }
 
-    let parsed: Record<string, unknown>;
+    let parsed: unknown;
     try {
-        parsed = parser.parse(xmlString) as Record<string, unknown>;
+        parsed = parser.parse(xmlString);
     } catch {
         return { platform: 'unknown', elements: [] };
     }
+    if (!Array.isArray(parsed)) return { platform: 'unknown', elements: [] };
 
-    const rootEntry = Object.entries(parsed).find(([, value]) => value && typeof value === 'object');
-    if (!rootEntry) {
-        return { platform: 'unknown', elements: [] };
-    }
+    const root = parsed.map(xmlElement).find(element => element !== undefined);
+    if (!root) return { platform: 'unknown', elements: [] };
 
-    const [rootTag, rootNode] = rootEntry;
     const elements: ParsedElement[] = [];
-    let nextIndex = 0;
+    const stack = [{ element: root, xpath: '', siblingIndex: 1, depth: 1 }];
+    let generatedPathChars = 0;
 
-    function visit(tag: string, node: XmlNode, parentXpath: string, siblingIndex: number): void {
-        const attrs = extractAttributes(node);
-        const type = attrs.type || attrs.class || tag;
-        const xpath = `${parentXpath}/${type}[${siblingIndex}]`;
+    while (stack.length > 0 && elements.length < MAX_XML_ELEMENTS) {
+        const entry = stack.pop();
+        if (!entry) break;
+        const { element, xpath, siblingIndex, depth } = entry;
+        const { tag, attributes } = element;
+        const path = appendXmlPath(xpath, tag, siblingIndex, generatedPathChars);
+        if (!path) return { platform: 'unknown', elements: [] };
+        const currentXpath = path.path;
+        generatedPathChars = path.generatedChars;
+        elements.push(normalizeParsedElement(tag, attributes, currentXpath, elements.length));
 
-        const platform = detectPlatform(type, attrs);
-        const bounds = attrs.bounds ? parseAndroidBounds(attrs.bounds) : undefined;
+        if (depth >= MAX_XML_DEPTH) continue;
 
-        const x = attrs.x !== undefined ? asNumber(attrs.x) : (bounds?.x ?? 0);
-        const y = attrs.y !== undefined ? asNumber(attrs.y) : (bounds?.y ?? 0);
-        const width = attrs.width !== undefined ? asNumber(attrs.width) : (bounds?.width ?? 0);
-        const height = attrs.height !== undefined ? asNumber(attrs.height) : (bounds?.height ?? 0);
-
-        const name = attrs.name || attrs['content-desc'] || attrs.resourceId || '';
-        const label = attrs.label || attrs.text || attrs['content-desc'] || '';
-        const value = attrs.value || '';
-        const text = attrs.text || value || '';
-        const resourceId = attrs['resource-id'] || attrs.resourceId || attrs.id || '';
-        const contentDesc = attrs['content-desc'] || attrs.contentDesc || '';
-
-        elements.push({
-            elementRef: makeElementRef(platform, xpath),
-            index: nextIndex++,
-            platform,
-            type,
-            xpath,
-            name,
-            label,
-            value,
-            text,
-            resourceId,
-            contentDesc,
-            enabled: asBoolean(attrs.enabled),
-            visible: asBoolean(attrs.visible) || asBoolean(attrs.displayed),
-            accessible: asBoolean(attrs.accessible),
-            clickable: asBoolean(attrs.clickable),
-            x,
-            y,
-            width,
-            height,
-            attributes: attrs,
+        const childCounts = new Map<string, number>();
+        const children = element.children.flatMap(child => {
+            const parsedChild = xmlElement(child);
+            if (!parsedChild) return [];
+            const childIndex = (childCounts.get(parsedChild.tag) ?? 0) + 1;
+            childCounts.set(parsedChild.tag, childIndex);
+            return [{
+                element: parsedChild,
+                xpath: currentXpath,
+                siblingIndex: childIndex,
+                depth: depth + 1,
+            }];
         });
-
-        const childCounters: Record<string, number> = {};
-        const children = extractChildren(node);
-        for (const { tag: childTag, child } of children) {
-            const childType = asString((child as XmlNode).type || (child as XmlNode).class || childTag);
-            childCounters[childType] = (childCounters[childType] || 0) + 1;
-            visit(childTag, child, xpath, childCounters[childType]);
-        }
+        stack.push(...children.reverse());
     }
 
-    visit(rootTag, rootNode as XmlNode, '', 1);
-
-    // Single pass: iOS wins if present anywhere, otherwise Android if present.
-    let platform: Platform = 'unknown';
-    for (const element of elements) {
-        if (element.platform === 'ios') {
-            platform = 'ios';
-            break;
-        }
-        if (element.platform === 'android') platform = 'android';
-    }
-
-    // Resolve any elements whose platform couldn't be detected locally to the
-    // page-level platform. The elements are freshly-created local objects, so we
-    // mutate them in place instead of allocating a parallel array — a meaningful
-    // saving for large page sources with hundreds of nodes.
-    if (platform !== 'unknown') {
-        for (const element of elements) {
-            if (element.platform === 'unknown') {
-                element.platform = platform;
-                element.elementRef = makeElementRef(platform, element.xpath);
-            }
-        }
-    }
-
-    return {
-        platform,
-        elements,
-    };
+    return { platform: resolveSourcePlatform(elements), elements };
 }

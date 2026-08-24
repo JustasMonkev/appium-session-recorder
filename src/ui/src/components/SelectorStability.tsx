@@ -1,12 +1,18 @@
 import { type Component, createMemo, Show, For } from 'solid-js';
-import type { Interaction, ParsedElement, Locator } from '../types';
+import type { Interaction, ParsedElement } from '../types';
+import type { SelectorCandidate } from '../../../core/types';
 import { getParsedElements } from '../utils/xml-parser';
+import { evaluateSelectorStability } from '../../../core/selectors/selector-stability';
+import { inspectXml } from '../../../core/xml/xml-limits';
 import './SelectorStability.css';
+
+const MAX_STABILITY_SNAPSHOTS = 10;
+const MAX_STABILITY_ELEMENTS = 2_000;
+const MAX_STABILITY_SOURCE_CHARS = 512 * 1024;
 
 type SelectorStabilityProps = {
     selectedElement: ParsedElement | null;
-    locators: Locator[];
-    /** All recorded actions (with source), starting from the current action forward */
+    locators: SelectorCandidate[];
     futureActions: Interaction[];
 };
 
@@ -18,95 +24,48 @@ type StabilityRow = {
     totalSteps: number;
 };
 
-type ElementMatcher = (el: ParsedElement) => boolean;
-
-const neverMatches: ElementMatcher = () => false;
-
-/**
- * Parse a locator once into a matcher so evaluating it across many snapshots
- * doesn't re-run the regex parsing for every snapshot.
- */
-function compileLocatorMatcher(strategy: string, value: string): ElementMatcher {
-    switch (strategy) {
-        case 'accessibility id':
-            return el => el.name === value || el.label === value;
-        case 'class name':
-            return el => el.type === value;
-        case 'xpath':
-            // Can't evaluate arbitrary xpath in this context without DOMParser per snapshot
-            // Fall back to exact xpath match
-            return el => el.xpath === value;
-        case '-ios predicate string': {
-            const eqMatch = value.match(/(name|label|type)\s*==\s*['"](.+?)['"]/i);
-            if (!eqMatch) return neverMatches;
-            const [, field, expected] = eqMatch;
-            if (field === 'name') return el => el.name === expected;
-            if (field === 'label') return el => el.label === expected;
-            return el => el.type === expected;
-        }
-        case '-ios class chain': {
-            const ccMatch = value.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
-            if (!ccMatch) return neverMatches;
-            const targetType = ccMatch[1];
-            const predicate = ccMatch[2];
-            if (!predicate) return el => el.type === targetType;
-            const nameMatch = predicate.match(/name\s*==\s*['"](.*)['"]/i);
-            const labelMatch = nameMatch ? null : predicate.match(/label\s*==\s*['"](.*)['"]/i);
-            return el => {
-                if (el.type !== targetType) return false;
-                if (nameMatch) return el.name === nameMatch[1];
-                if (labelMatch) return el.label === labelMatch[1];
-                return true;
-            };
-        }
-        default:
-            return neverMatches;
-    }
-}
-
 export const SelectorStability: Component<SelectorStabilityProps> = (props) => {
-    // Parsed per interaction and cached (getParsedElements), and kept in a
-    // separate memo so selecting a different element doesn't re-parse the
-    // future snapshots — only the cheap matching below re-runs.
-    const snapshots = createMemo<ParsedElement[][]>(() =>
-        props.futureActions
-            .filter(a => a.source)
-            .map(a => getParsedElements(a))
-    );
+    const snapshotReport = createMemo(() => {
+        const eligible = props.futureActions.filter(action => action.source || action.detailsTruncated);
+        const snapshots: ParsedElement[][] = [];
+        let elementCount = 0;
+        let sourceChars = 0;
+        for (const action of eligible) {
+            if (snapshots.length >= MAX_STABILITY_SNAPSHOTS) break;
+            if (!action.source || sourceChars + action.source.length > MAX_STABILITY_SOURCE_CHARS) break;
+            const estimatedElements = inspectXml(action.source)?.elementCount ?? MAX_STABILITY_ELEMENTS + 1;
+            if (elementCount + estimatedElements > MAX_STABILITY_ELEMENTS) break;
+            const elements = getParsedElements(action);
+            if (elementCount + elements.length > MAX_STABILITY_ELEMENTS) break;
+            snapshots.push(elements);
+            elementCount += elements.length;
+            sourceChars += action.source.length;
+        }
+        return {
+            snapshots,
+            eligibleCount: eligible.length,
+            truncated: snapshots.length < eligible.length,
+        };
+    });
 
     const stabilityRows = createMemo((): StabilityRow[] => {
-        if (!props.selectedElement || props.locators.length === 0) {
+        const selectedElement = props.selectedElement;
+        if (!selectedElement || props.locators.length === 0) {
             return [];
         }
 
-        const parsedSnapshots = snapshots();
+        const parsedSnapshots = snapshotReport().snapshots;
         if (parsedSnapshots.length === 0) return [];
 
-        return props.locators.map(locator => {
-            let stableSteps = 0;
-            let firstFailureStep = 0;
-            const matches = compileLocatorMatcher(locator.strategy, locator.value);
-
-            for (let i = 0; i < parsedSnapshots.length; i++) {
-                let matchCount = 0;
-                for (const el of parsedSnapshots[i]) {
-                    if (matches(el)) matchCount++;
-                }
-                if (matchCount === 1) {
-                    stableSteps++;
-                } else if (firstFailureStep === 0) {
-                    firstFailureStep = i + 1;
-                }
-            }
-
+        return evaluateSelectorStability(props.locators, parsedSnapshots).results.map(result => {
             return {
-                strategy: locator.strategy,
-                value: locator.value,
-                stableSteps,
-                firstFailureStep,
-                totalSteps: parsedSnapshots.length,
+                strategy: result.candidate.strategy,
+                value: result.candidate.value,
+                stableSteps: result.stableSteps,
+                firstFailureStep: result.firstFailureStep,
+                totalSteps: result.totalSteps,
             };
-        }).sort((a, b) => b.stableSteps - a.stableSteps);
+        });
     });
 
     const bestRow = createMemo(() => {
@@ -115,7 +74,7 @@ export const SelectorStability: Component<SelectorStabilityProps> = (props) => {
     });
 
     return (
-        <Show when={stabilityRows().length > 0}>
+        <Show when={stabilityRows().length > 0 || snapshotReport().truncated}>
             <div class="selector-stability">
                 <h4 class="stability-title">Selector Stability</h4>
                 <Show when={bestRow()}>
@@ -123,33 +82,40 @@ export const SelectorStability: Component<SelectorStabilityProps> = (props) => {
                         Best: <code>{bestRow()!.strategy}</code> — stable for {bestRow()!.stableSteps}/{bestRow()!.totalSteps} steps
                     </div>
                 </Show>
-                <div class="stability-table">
-                    <div class="stability-header">
-                        <span class="stability-col-strategy">Strategy</span>
-                        <span class="stability-col-value">Value</span>
-                        <span class="stability-col-stable">Stable</span>
-                        <span class="stability-col-fail">First Fail</span>
+                <Show when={snapshotReport().truncated}>
+                    <div class="stability-best">
+                        Analysis limited to {snapshotReport().snapshots.length}/{snapshotReport().eligibleCount} future screens.
                     </div>
-                    <For each={stabilityRows()}>
-                        {(row) => (
-                            <div
-                                class="stability-row"
-                                classList={{
-                                    'stability-row-good': row.firstFailureStep === 0,
-                                    'stability-row-warn': row.firstFailureStep > 0 && row.stableSteps > 0,
-                                    'stability-row-bad': row.stableSteps === 0,
-                                }}
-                            >
-                                <span class="stability-col-strategy">{row.strategy}</span>
-                                <span class="stability-col-value" title={row.value}>{row.value}</span>
-                                <span class="stability-col-stable">{row.stableSteps}/{row.totalSteps}</span>
-                                <span class="stability-col-fail">
-                                    {row.firstFailureStep === 0 ? '—' : `Step ${row.firstFailureStep}`}
-                                </span>
-                            </div>
-                        )}
-                    </For>
-                </div>
+                </Show>
+                <Show when={stabilityRows().length > 0}>
+                    <div class="stability-table">
+                        <div class="stability-header">
+                            <span class="stability-col-strategy">Strategy</span>
+                            <span class="stability-col-value">Value</span>
+                            <span class="stability-col-stable">Stable</span>
+                            <span class="stability-col-fail">First Fail</span>
+                        </div>
+                        <For each={stabilityRows()}>
+                            {(row) => (
+                                <div
+                                    class="stability-row"
+                                    classList={{
+                                        'stability-row-good': row.firstFailureStep === 0,
+                                        'stability-row-warn': row.firstFailureStep > 0 && row.stableSteps > 0,
+                                        'stability-row-bad': row.stableSteps === 0,
+                                    }}
+                                >
+                                    <span class="stability-col-strategy">{row.strategy}</span>
+                                    <span class="stability-col-value" title={row.value}>{row.value}</span>
+                                    <span class="stability-col-stable">{row.stableSteps}/{row.totalSteps}</span>
+                                    <span class="stability-col-fail">
+                                        {row.firstFailureStep === 0 ? '—' : `Step ${row.firstFailureStep}`}
+                                    </span>
+                                </div>
+                            )}
+                        </For>
+                    </div>
+                </Show>
             </div>
         </Show>
     );

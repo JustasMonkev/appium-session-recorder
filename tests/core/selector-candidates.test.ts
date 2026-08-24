@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { generateSelectorCandidates } from '../../src/core/selectors/generate-candidates';
+import { parseSource } from '../../src/core/xml/parse-source';
 import type { ParsedElement } from '../../src/core/types';
 
 function createElement(overrides: Partial<ParsedElement>): ParsedElement {
-    return {
+    const element: ParsedElement = {
         elementRef: 'ios:/XCUIElementTypeButton[1]',
         index: 0,
         platform: 'ios',
@@ -26,6 +27,16 @@ function createElement(overrides: Partial<ParsedElement>): ParsedElement {
         attributes: {},
         ...overrides,
     };
+    if (!overrides.attributes) {
+        const attributes: Record<string, string> = { type: element.type };
+        if (element.name) attributes.name = element.name;
+        if (element.label) attributes.label = element.label;
+        if (element.text) attributes.text = element.text;
+        if (element.resourceId) attributes['resource-id'] = element.resourceId;
+        if (element.contentDesc) attributes['content-desc'] = element.contentDesc;
+        element.attributes = attributes;
+    }
+    return element;
 }
 
 describe('generateSelectorCandidates', () => {
@@ -66,6 +77,96 @@ describe('generateSelectorCandidates', () => {
 
         expect(candidates.some(candidate => candidate.strategy === '-android uiautomator')).toBe(true);
         expect(candidates.some(candidate => candidate.strategy === 'accessibility id' && candidate.value === 'continueButton')).toBe(true);
+    });
+
+    it('does not mistake visible Android text for an accessibility id', () => {
+        const element = createElement({
+            platform: 'android',
+            type: 'android.widget.Button',
+            name: 'Continue',
+            label: 'Continue',
+            text: 'Continue',
+            contentDesc: '',
+            attributes: { class: 'android.widget.Button', text: 'Continue' },
+        });
+
+        const candidates = generateSelectorCandidates(element);
+
+        expect(candidates.some(candidate => candidate.strategy === 'accessibility id')).toBe(false);
+        expect(candidates).toContainEqual({
+            strategy: 'xpath',
+            value: '//*[@class="android.widget.Button" and @text="Continue"]',
+            platform: 'generic',
+        });
+    });
+
+    it('uses the real XML class attribute or tag in generated generic XPath', () => {
+        const elements = parseSource('<Root><node class="Button" name="go"/><Button name="tagged"/></Root>').elements;
+
+        const classXPath = generateSelectorCandidates(elements[1]).find(candidate => (
+            candidate.strategy === 'xpath' && candidate.value.startsWith('//')
+        ));
+        const tagXPath = generateSelectorCandidates(elements[2]).find(candidate => (
+            candidate.strategy === 'xpath' && candidate.value.startsWith('//')
+        ));
+
+        expect(classXPath?.value).toBe('//*[@class="Button" and @name="go"]');
+        expect(tagXPath?.value).toBe('//Button[@name="tagged"]');
+    });
+
+    it('escapes quotes and backslashes in generated platform selectors', () => {
+        const value = 'say "hello" \\ now';
+        const iosCandidates = generateSelectorCandidates(createElement({ name: value }));
+        const androidCandidates = generateSelectorCandidates(createElement({
+            platform: 'android',
+            type: 'android.widget.TextView',
+            text: value,
+        }));
+
+        expect(iosCandidates).toContainEqual({
+            strategy: '-ios predicate string',
+            value: 'name == "say \\"hello\\" \\\\ now"',
+            platform: 'ios',
+        });
+        expect(androidCandidates).toContainEqual({
+            strategy: '-android uiautomator',
+            value: 'new UiSelector().text("say \\"hello\\" \\\\ now")',
+            platform: 'android',
+        });
+    });
+
+    it('escapes control characters in platform string literals', () => {
+        const value = 'line\nbreak\tcontrol\u0001';
+        const iosCandidates = generateSelectorCandidates(createElement({ name: value }));
+        const androidCandidates = generateSelectorCandidates(createElement({
+            platform: 'android',
+            type: 'android.widget.TextView',
+            text: value,
+        }));
+
+        expect(iosCandidates).toContainEqual({
+            strategy: '-ios predicate string',
+            value: 'name == "line\\nbreak\\tcontrol\\u0001"',
+            platform: 'ios',
+        });
+        expect(androidCandidates).toContainEqual({
+            strategy: '-android uiautomator',
+            value: 'new UiSelector().text("line\\nbreak\\tcontrol\\u0001")',
+            platform: 'android',
+        });
+    });
+
+    it('omits an unsafe conditional XPath when a value contains both quote styles', () => {
+        const element = createElement({ name: 'He said "don\'t"' });
+
+        const xpaths = generateSelectorCandidates(element)
+            .filter(candidate => candidate.strategy === 'xpath');
+
+        expect(xpaths).toEqual([{
+            strategy: 'xpath',
+            value: element.xpath,
+            platform: 'generic',
+        }]);
     });
 
     it('always includes xpath and class name fallback', () => {

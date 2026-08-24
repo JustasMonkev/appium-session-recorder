@@ -1,3 +1,5 @@
+import { appendXmlPath, isXmlWithinLimits, MAX_XML_DEPTH, MAX_XML_ELEMENTS } from '../../../core/xml/xml-limits';
+import { normalizeParsedElement, resolveSourcePlatform } from '../../../core/xml/normalize-element';
 import type { Interaction, ParsedElement } from '../types';
 
 export type ParsedXmlDocument = {
@@ -5,55 +7,56 @@ export type ParsedXmlDocument = {
     elements: ParsedElement[];
 };
 
-/**
- * Parse XML into both the DOM document and the flat element list. Keeping the
- * document around lets callers evaluate XPath against the same nodes stored on
- * each ParsedElement, so matches can be compared by identity instead of
- * deep-comparing nodes across two separately parsed documents.
- */
 export function parseXmlDocument(xmlString: string): ParsedXmlDocument {
     const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlString, 'text/xml');
+    const withinLimits = isXmlWithinLimits(xmlString);
+    const doc = parser.parseFromString(withinLimits ? xmlString : '', 'text/xml');
     const elements: ParsedElement[] = [];
+    let generatedPathChars = 0;
 
-    function traverse(node: Element, xpath = '', index = 0) {
-        if (node.nodeType !== 1) return;
+    if (
+        !withinLimits
+        || (
+            doc.documentElement.localName === 'parsererror'
+            && doc.documentElement.namespaceURI === 'http://www.mozilla.org/newlayout/xml/parsererror.xml'
+        )
+    ) {
+        return { doc, elements };
+    }
 
-        const type = node.getAttribute('type') || node.tagName;
-        const x = parseInt(node.getAttribute('x') || '0');
-        const y = parseInt(node.getAttribute('y') || '0');
-        const width = parseInt(node.getAttribute('width') || '0');
-        const height = parseInt(node.getAttribute('height') || '0');
+    const stack: Array<{ node: Element; xpath: string; siblingIndex: number; depth: number }> = [
+        { node: doc.documentElement, xpath: '', siblingIndex: 1, depth: 1 },
+    ];
 
-        const currentXpath = xpath + '/' + type + '[' + (index + 1) + ']';
-
+    while (stack.length > 0 && elements.length < MAX_XML_ELEMENTS) {
+        const entry = stack.pop();
+        if (!entry) break;
+        const { node, xpath, siblingIndex, depth } = entry;
+        const attributes = Object.fromEntries(
+            Array.from(node.attributes, attribute => [attribute.name, attribute.value]),
+        );
+        const path = appendXmlPath(xpath, node.tagName, siblingIndex, generatedPathChars);
+        if (!path) return { doc, elements: [] };
+        const currentXpath = path.path;
+        generatedPathChars = path.generatedChars;
         elements.push({
-            type,
-            name: node.getAttribute('name') || '',
-            label: node.getAttribute('label') || '',
-            value: node.getAttribute('value') || '',
-            enabled: node.getAttribute('enabled') === 'true',
-            visible:
-                node.getAttribute('visible') !== 'false' &&
-                node.getAttribute('displayed') !== 'false',
-            accessible: node.getAttribute('accessible') === 'true',
-            x, y, width, height,
-            xpath: currentXpath,
-            node
+            ...normalizeParsedElement(node.tagName, attributes, currentXpath, elements.length),
+            node,
         });
 
-        const childCounts: Record<string, number> = {};
-        for (const child of Array.from(node.children)) {
-            const childType = child.getAttribute('type') || child.tagName;
-            childCounts[childType] = (childCounts[childType] || 0);
-            traverse(child as Element, currentXpath, childCounts[childType]);
-            childCounts[childType]++;
-        }
+        if (depth >= MAX_XML_DEPTH) continue;
+
+        const childCounts = new Map<string, number>();
+        const children = Array.from(node.children, child => {
+            const childIndex = (childCounts.get(child.tagName) ?? 0) + 1;
+            childCounts.set(child.tagName, childIndex);
+            return { node: child, xpath: currentXpath, siblingIndex: childIndex, depth: depth + 1 };
+        });
+        stack.push(...children.reverse());
     }
 
-    if (doc.documentElement) {
-        traverse(doc.documentElement);
-    }
+    resolveSourcePlatform(elements);
+
     return { doc, elements };
 }
 
@@ -61,20 +64,6 @@ export function parseXmlSource(xmlString: string): ParsedElement[] {
     return parseXmlDocument(xmlString).elements;
 }
 
-const parseCache = new WeakMap<Interaction, ParsedElement[]>();
-
-/**
- * Parse an interaction's XML source, caching per interaction object so
- * repeated lookups (e.g. stability checks across many snapshots) don't
- * re-parse the same source on every recomputation.
- */
 export function getParsedElements(interaction: Interaction): ParsedElement[] {
-    if (!interaction.source) return [];
-
-    let elements = parseCache.get(interaction);
-    if (!elements) {
-        elements = parseXmlSource(interaction.source);
-        parseCache.set(interaction, elements);
-    }
-    return elements;
+    return interaction.source ? parseXmlSource(interaction.source) : [];
 }

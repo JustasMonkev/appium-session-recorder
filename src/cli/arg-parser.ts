@@ -1,4 +1,5 @@
 import type { RecorderOptions } from '../server/types';
+import { isSafeAppiumUrl } from '../core/appium/client';
 
 export type ParsedArgs = Partial<RecorderOptions> & {
     help?: boolean;
@@ -21,23 +22,30 @@ export function parseArgs(argv: string[]): ParseArgsResult {
         } else if (arg === '--version' || arg === '-v') {
             parsed.version = true;
         } else if (arg === '--port' || arg === '-p') {
-            if (i + 1 >= args.length) {
+            if (i + 1 >= args.length || args[i + 1].startsWith('-')) {
                 return { success: false, error: '--port requires a value' };
             }
-            parsed.port = Number(args[++i]);
-            if (isNaN(parsed.port)) {
-                return { success: false, error: '--port must be a number' };
-            }
+            const value = args[++i];
+            if (validatePort(value)) return { success: false, error: '--port must be an integer between 1 and 65535' };
+            parsed.port = Number(value);
         } else if (arg === '--appium-url' || arg === '-u') {
-            if (i + 1 >= args.length) {
+            if (i + 1 >= args.length || args[i + 1].startsWith('-')) {
                 return { success: false, error: '--appium-url requires a value' };
             }
-            parsed.appiumUrl = args[++i];
+            const value = args[++i];
+            if (validateUrl(value)) {
+                return { success: false, error: '--appium-url must be an HTTP(S) URL without credentials, query, or fragment' };
+            }
+            parsed.appiumUrl = value;
         } else if (arg === '--host') {
-            if (i + 1 >= args.length) {
+            if (i + 1 >= args.length || args[i + 1].startsWith('-')) {
                 return { success: false, error: '--host requires a value' };
             }
-            parsed.host = args[++i];
+            const value = args[++i];
+            if (validateHost(value)) return { success: false, error: '--host must be localhost, 127.0.0.1, or ::1' };
+            parsed.host = value;
+        } else {
+            return { success: false, error: `Unknown argument '${arg}'` };
         }
     }
 
@@ -45,30 +53,23 @@ export function parseArgs(argv: string[]): ParseArgsResult {
 }
 
 export function validatePort(value: string): string | undefined {
-    if (value.trim().length === 0) return undefined;
     const num = Number(value);
-    if (isNaN(num) || num < 1 || num > 65535) {
+    if (!/^\d+$/.test(value) || !Number.isInteger(num) || num < 1 || num > 65535) {
         return 'Please enter a valid port number (1-65535)';
     }
     return undefined;
 }
 
 export function validateUrl(value: string): string | undefined {
-    if (value.trim().length === 0) return undefined;
-    try {
-        new URL(value);
-        return undefined;
-    } catch {
-        return 'Please enter a valid URL';
-    }
+    return isSafeAppiumUrl(value)
+        ? undefined
+        : 'Please enter a valid HTTP(S) URL without credentials, query, or fragment';
 }
 
 export function validateHost(value: string): string | undefined {
-    if (value.trim().length === 0) return undefined;
-    if (!value || value.trim().length === 0) {
-        return 'Please enter a valid host';
-    }
-    return undefined;
+    return ['localhost', '127.0.0.1', '::1'].includes(value)
+        ? undefined
+        : 'Please enter localhost, 127.0.0.1, or ::1';
 }
 
 export type GlobalCliOptions = {
@@ -87,21 +88,23 @@ export type ParsedCliInput = {
     global: GlobalCliOptions;
     legacyArgv?: string[];
     route?: CommandRoute;
-    help?: boolean;
-    version?: boolean;
 };
 
 export type ParseCliInputResult =
     | { success: true; value: ParsedCliInput }
     | { success: false; error: string };
 
-const commandSubcommands: Record<string, string[]> = {
+const commandSubcommands: Record<CommandRoute['group'], string[]> = {
     proxy: ['start'],
     session: ['create', 'delete'],
     screen: ['snapshot', 'elements'],
     selectors: ['best'],
     drive: ['tap', 'type', 'back', 'swipe', 'scroll'],
 };
+
+function isCommandGroup(value: string): value is CommandRoute['group'] {
+    return Object.hasOwn(commandSubcommands, value);
+}
 
 const LEGACY_GLOBAL_FLAGS_ERROR = '--pretty and --output are only supported with <group> <command> mode';
 
@@ -155,7 +158,6 @@ export function parseCliInput(argv: string[]): ParseCliInputResult {
             success: true,
             value: {
                 mode: 'legacy',
-                help: true,
                 global,
                 legacyArgv: ['node', 'script', '--help'],
             },
@@ -170,7 +172,6 @@ export function parseCliInput(argv: string[]): ParseCliInputResult {
             success: true,
             value: {
                 mode: 'legacy',
-                version: true,
                 global,
                 legacyArgv: ['node', 'script', '--version'],
             },
@@ -192,7 +193,7 @@ export function parseCliInput(argv: string[]): ParseCliInputResult {
     }
 
     const maybeGroup = remaining[0];
-    if (!(maybeGroup in commandSubcommands)) {
+    if (maybeGroup.startsWith('-')) {
         if (hasLegacyOnlyGlobalFlags(global)) {
             return { success: false, error: LEGACY_GLOBAL_FLAGS_ERROR };
         }
@@ -201,9 +202,15 @@ export function parseCliInput(argv: string[]): ParseCliInputResult {
             value: {
                 mode: 'legacy',
                 global,
-                legacyArgv: ['node', 'script', ...remaining],
+                legacyArgv: [...argv.slice(0, 2), ...remaining],
             },
         };
+    }
+    if (!isCommandGroup(maybeGroup)) {
+        if (hasLegacyOnlyGlobalFlags(global)) {
+            return { success: false, error: LEGACY_GLOBAL_FLAGS_ERROR };
+        }
+        return { success: false, error: `Unknown command group '${maybeGroup}'` };
     }
 
     const subcommand = remaining[1];
@@ -225,7 +232,7 @@ export function parseCliInput(argv: string[]): ParseCliInputResult {
             mode: 'command',
             global,
             route: {
-                group: maybeGroup as CommandRoute['group'],
+                group: maybeGroup,
                 command: subcommand,
                 args: remaining.slice(2),
             },
@@ -238,7 +245,7 @@ export type ParseFlagsResult =
     | { success: false; error: string };
 
 export function parseFlags(args: string[]): ParseFlagsResult {
-    const flags: Record<string, string | boolean> = {};
+    const flags: Record<string, string | boolean> = Object.create(null);
     const positionals: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -279,7 +286,8 @@ export function parseFlags(args: string[]): ParseFlagsResult {
 }
 
 export function parseNumberFlag(name: string, value: string | boolean | undefined): number | undefined {
-    if (typeof value !== 'string') return undefined;
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') throw new Error(`--${name} requires a value`);
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
         throw new Error(`--${name} must be a number`);
@@ -294,10 +302,17 @@ export function expectStringFlag(name: string, value: string | boolean | undefin
     return value;
 }
 
-export function expectOptionalString(value: string | boolean | undefined): string | undefined {
-    if (typeof value !== 'string') return undefined;
+export function expectOptionalString(name: string, value: string | boolean | undefined): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') throw new Error(`--${name} requires a value`);
     const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
+    if (!trimmed) throw new Error(`--${name} requires a non-empty value`);
+    return trimmed;
+}
+
+export function parseBooleanFlag(name: string, value: string | boolean | undefined): boolean {
+    if (typeof value === 'string') throw new Error(`--${name} does not take a value`);
+    return value ?? false;
 }
 
 export function ensureNoUnexpectedFlags(

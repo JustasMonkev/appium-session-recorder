@@ -3,18 +3,14 @@ import type { Interaction } from '../types';
 import './ActionCarousel.css';
 
 type ActionCarouselProps = {
-    interactions: Interaction[];
+    actions: Interaction[];
     currentIndex: number;
     onNavigate: (index: number) => void;
 };
 
 export const ActionCarousel: Component<ActionCarouselProps> = (props) => {
-    const actions = createMemo(() =>
-        props.interactions.filter(i => i.screenshotUrl)
-    );
-
-    const currentAction = createMemo(() => actions()[props.currentIndex]);
-    const total = createMemo(() => actions().length);
+    const currentAction = createMemo(() => props.actions[props.currentIndex]);
+    const total = () => props.actions.length;
 
     const goToPrevious = () => {
         if (props.currentIndex > 0) {
@@ -40,7 +36,7 @@ export const ActionCarousel: Component<ActionCarouselProps> = (props) => {
                 fallback={
                     <div class="carousel-empty">
                         <span class="carousel-empty-icon">📱</span>
-                        <span>No actions recorded yet. Connect Appium Inspector to port 4724 and start interacting.</span>
+                        <span>No actions recorded yet. Connect an Appium client to this recorder and start interacting.</span>
                     </div>
                 }
             >
@@ -67,6 +63,11 @@ export const ActionCarousel: Component<ActionCarouselProps> = (props) => {
                             </span>
                             <span class="carousel-path">{currentAction()!.path}</span>
                             <span class="carousel-time">{formattedTime()}</span>
+                            <Show when={!currentAction()!.screenshotUrl}>
+                                <span class="carousel-capture">
+                                    capture {currentAction()!.captureStatus ?? 'unavailable'}
+                                </span>
+                            </Show>
                         </div>
                         <Show when={currentAction()!.elementInfo}>
                             <div class="carousel-element">

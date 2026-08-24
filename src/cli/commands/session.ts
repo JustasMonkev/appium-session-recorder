@@ -1,7 +1,32 @@
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { AppiumCommandClient } from '../../core/appium/client';
 import { ensureNoUnexpectedFlags, expectOptionalString, expectStringFlag, parseFlags } from '../arg-parser';
 import type { CommandExecutionResult } from './types';
+
+const MAX_CAPABILITIES_BYTES = 10 * 1024 * 1024;
+
+async function readCapabilitiesFile(file: string): Promise<string> {
+    const handle = await open(file, 'r');
+    try {
+        if ((await handle.stat()).size > MAX_CAPABILITIES_BYTES) {
+            throw new Error('Capabilities exceed 10 MiB');
+        }
+
+        const chunks: Buffer[] = [];
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        let position = 0;
+        while (true) {
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+            if (bytesRead === 0) break;
+            position += bytesRead;
+            if (position > MAX_CAPABILITIES_BYTES) throw new Error('Capabilities exceed 10 MiB');
+            chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+        }
+        return Buffer.concat(chunks, position).toString('utf8');
+    } finally {
+        await handle.close();
+    }
+}
 
 export async function runSessionCreate(args: string[]): Promise<CommandExecutionResult> {
     const parsed = parseFlags(args);
@@ -11,21 +36,21 @@ export async function runSessionCreate(args: string[]): Promise<CommandExecution
     ensureNoUnexpectedFlags(parsed.flags, ['appium-url', 'caps-file', 'caps-json']);
 
     const appiumUrl = expectStringFlag('appium-url', parsed.flags['appium-url']);
-    const capsFile = expectOptionalString(parsed.flags['caps-file']);
-    const capsJson = expectOptionalString(parsed.flags['caps-json']);
+    const capsFile = expectOptionalString('caps-file', parsed.flags['caps-file']);
+    const capsJson = expectOptionalString('caps-json', parsed.flags['caps-json']);
 
-    if ((capsFile && capsJson) || (!capsFile && !capsJson)) {
+    let rawCapabilities: string;
+    if (capsFile && !capsJson) {
+        rawCapabilities = await readCapabilitiesFile(capsFile);
+    } else if (capsJson && !capsFile) {
+        rawCapabilities = capsJson;
+    } else {
         throw new Error('Provide exactly one of --caps-file or --caps-json');
     }
-
-    let capabilities: Record<string, unknown>;
-
-    if (capsFile) {
-        const raw = await readFile(capsFile, 'utf8');
-        capabilities = JSON.parse(raw);
-    } else {
-        capabilities = JSON.parse(capsJson!);
+    if (Buffer.byteLength(rawCapabilities) > MAX_CAPABILITIES_BYTES) {
+        throw new Error('Capabilities exceed 10 MiB');
     }
+    const capabilities: unknown = JSON.parse(rawCapabilities);
 
     const client = new AppiumCommandClient(appiumUrl);
     const session = await client.createSession(capabilities);

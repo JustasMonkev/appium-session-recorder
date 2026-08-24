@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { parseArgs, parseCliInput, validatePort, validateUrl, validateHost } from '../../src/cli/arg-parser';
+import {
+    ensureNoUnexpectedFlags,
+    expectOptionalString,
+    expectStringFlag,
+    parseArgs,
+    parseBooleanFlag,
+    parseCliInput,
+    parseFlags,
+    parseNumberFlag,
+    validateHost,
+    validatePort,
+    validateUrl,
+} from '../../src/cli/arg-parser';
 
 describe('parseArgs', () => {
     // Helper to simulate argv (node, script, ...args)
@@ -78,12 +90,12 @@ describe('parseArgs', () => {
 
             expect(result.success).toBe(false);
             if (!result.success) {
-                expect(result.error).toBe('--port must be a number');
+                expect(result.error).toBe('--port must be an integer between 1 and 65535');
             }
         });
 
         it('should handle port at end of args', () => {
-            const result = parseArgs(createArgv('--host', '0.0.0.0', '--port', '3000'));
+            const result = parseArgs(createArgv('--host', 'localhost', '--port', '3000'));
 
             expect(result.success).toBe(true);
             if (result.success) {
@@ -123,11 +135,11 @@ describe('parseArgs', () => {
 
     describe('host option', () => {
         it('should parse --host option', () => {
-            const result = parseArgs(createArgv('--host', '0.0.0.0'));
+            const result = parseArgs(createArgv('--host', '::1'));
 
             expect(result.success).toBe(true);
             if (result.success) {
-                expect(result.args.host).toBe('0.0.0.0');
+                expect(result.args.host).toBe('::1');
             }
         });
 
@@ -146,14 +158,14 @@ describe('parseArgs', () => {
             const result = parseArgs(createArgv(
                 '--port', '8080',
                 '--appium-url', 'http://localhost:4723',
-                '--host', '0.0.0.0'
+                '--host', '127.0.0.1'
             ));
 
             expect(result.success).toBe(true);
             if (result.success) {
                 expect(result.args.port).toBe(8080);
                 expect(result.args.appiumUrl).toBe('http://localhost:4723');
-                expect(result.args.host).toBe('0.0.0.0');
+                expect(result.args.host).toBe('127.0.0.1');
             }
         });
 
@@ -183,13 +195,12 @@ describe('parseArgs', () => {
     });
 
     describe('unknown args', () => {
-        it('should ignore unknown arguments', () => {
+        it('should reject unknown arguments', () => {
             const result = parseArgs(createArgv('--unknown', 'value', '--port', '8080'));
 
-            expect(result.success).toBe(true);
-            if (result.success) {
-                expect(result.args.port).toBe(8080);
-                expect(result.args).not.toHaveProperty('unknown');
+            expect(result.success).toBe(false);
+            if (!result.success) {
+                expect(result.error).toBe("Unknown argument '--unknown'");
             }
         });
     });
@@ -198,37 +209,28 @@ describe('parseArgs', () => {
         it('should handle negative port number', () => {
             const result = parseArgs(createArgv('--port', '-1'));
 
-            expect(result.success).toBe(true);
-            if (result.success) {
-                expect(result.args.port).toBe(-1);
+            expect(result.success).toBe(false);
+            if (!result.success) {
+                expect(result.error).toBe('--port requires a value');
             }
         });
 
         it('should handle zero port', () => {
             const result = parseArgs(createArgv('--port', '0'));
 
-            expect(result.success).toBe(true);
-            if (result.success) {
-                expect(result.args.port).toBe(0);
-            }
+            expect(result.success).toBe(false);
         });
 
-        it('should handle floating point port (truncates)', () => {
+        it('should reject a floating point port', () => {
             const result = parseArgs(createArgv('--port', '8080.5'));
 
-            expect(result.success).toBe(true);
-            if (result.success) {
-                expect(result.args.port).toBe(8080.5);
-            }
+            expect(result.success).toBe(false);
         });
 
-        it('should handle URL with special characters', () => {
+        it('should reject URL credentials', () => {
             const result = parseArgs(createArgv('--appium-url', 'http://user:pass@localhost:4723/path?query=value'));
 
-            expect(result.success).toBe(true);
-            if (result.success) {
-                expect(result.args.appiumUrl).toBe('http://user:pass@localhost:4723/path?query=value');
-            }
+            expect(result.success).toBe(false);
         });
     });
 });
@@ -238,12 +240,12 @@ describe('validatePort', () => {
         expect(validatePort('8080')).toBeUndefined();
     });
 
-    it('should return undefined for empty string', () => {
-        expect(validatePort('')).toBeUndefined();
+    it('should reject an empty string', () => {
+        expect(validatePort('')).toBe('Please enter a valid port number (1-65535)');
     });
 
-    it('should return undefined for whitespace only', () => {
-        expect(validatePort('   ')).toBeUndefined();
+    it('should reject whitespace only', () => {
+        expect(validatePort('   ')).toBe('Please enter a valid port number (1-65535)');
     });
 
     it('should return error for non-numeric string', () => {
@@ -274,29 +276,44 @@ describe('validateUrl', () => {
         expect(validateUrl('http://localhost:4723')).toBeUndefined();
     });
 
-    it('should return undefined for empty string', () => {
-        expect(validateUrl('')).toBeUndefined();
+    it('should reject an empty string', () => {
+        expect(validateUrl('')).toBe('Please enter a valid HTTP(S) URL without credentials, query, or fragment');
     });
 
-    it('should return undefined for whitespace only', () => {
-        expect(validateUrl('   ')).toBeUndefined();
+    it('should reject whitespace only', () => {
+        expect(validateUrl('   ')).toBe('Please enter a valid HTTP(S) URL without credentials, query, or fragment');
     });
 
     it('should return error for invalid URL', () => {
-        expect(validateUrl('not-a-url')).toBe('Please enter a valid URL');
+        expect(validateUrl('not-a-url')).toBe('Please enter a valid HTTP(S) URL without credentials, query, or fragment');
     });
 
     it('should return error for completely invalid URL', () => {
         // Note: URL constructor in Node.js treats 'localhost:4723' as valid
         // (with 'localhost' as protocol), so we test truly invalid URLs
-        expect(validateUrl('://invalid')).toBe('Please enter a valid URL');
+        expect(validateUrl('://invalid')).toBe('Please enter a valid HTTP(S) URL without credentials, query, or fragment');
     });
 
     it('should accept various valid URL formats', () => {
         expect(validateUrl('http://localhost')).toBeUndefined();
         expect(validateUrl('https://example.com')).toBeUndefined();
         expect(validateUrl('http://192.168.1.100:4723')).toBeUndefined();
-        expect(validateUrl('http://user:pass@host:8080/path')).toBeUndefined();
+        expect(validateUrl('http://host:8080/path')).toBeUndefined();
+        expect(validateUrl('http://user:pass@host:8080/path')).toBe(
+            'Please enter a valid HTTP(S) URL without credentials, query, or fragment',
+        );
+        expect(validateUrl('http://host:8080/path?token=x')).toBe(
+            'Please enter a valid HTTP(S) URL without credentials, query, or fragment',
+        );
+        expect(validateUrl('http://host:8080/path#fragment')).toBe(
+            'Please enter a valid HTTP(S) URL without credentials, query, or fragment',
+        );
+        expect(validateUrl('http://host:8080/path?')).toBe(
+            'Please enter a valid HTTP(S) URL without credentials, query, or fragment',
+        );
+        expect(validateUrl('http://host:8080/path#')).toBe(
+            'Please enter a valid HTTP(S) URL without credentials, query, or fragment',
+        );
     });
 });
 
@@ -305,23 +322,22 @@ describe('validateHost', () => {
         expect(validateHost('localhost')).toBeUndefined();
     });
 
-    it('should return undefined for empty string', () => {
-        expect(validateHost('')).toBeUndefined();
+    it('should reject an empty string', () => {
+        expect(validateHost('')).toBe('Please enter localhost, 127.0.0.1, or ::1');
     });
 
-    it('should return undefined for whitespace only', () => {
-        expect(validateHost('   ')).toBeUndefined();
+    it('should reject whitespace only', () => {
+        expect(validateHost('   ')).toBe('Please enter localhost, 127.0.0.1, or ::1');
     });
 
-    it('should accept IP addresses', () => {
+    it('should accept loopback addresses', () => {
         expect(validateHost('127.0.0.1')).toBeUndefined();
-        expect(validateHost('0.0.0.0')).toBeUndefined();
-        expect(validateHost('192.168.1.100')).toBeUndefined();
+        expect(validateHost('::1')).toBeUndefined();
     });
 
-    it('should accept hostnames', () => {
-        expect(validateHost('my-host')).toBeUndefined();
-        expect(validateHost('server.local')).toBeUndefined();
+    it('should reject non-loopback hosts', () => {
+        expect(validateHost('0.0.0.0')).toBe('Please enter localhost, 127.0.0.1, or ::1');
+        expect(validateHost('server.local')).toBe('Please enter localhost, 127.0.0.1, or ::1');
     });
 });
 
@@ -337,6 +353,20 @@ describe('parseCliInput', () => {
         }
     });
 
+    it('keeps legacy proxy flags in legacy mode', () => {
+        const argv = createArgv('--host', '127.0.0.1', '--port', '4724', '--appium-url', 'http://127.0.0.1:4723');
+        const result = parseCliInput(argv);
+
+        expect(result).toEqual({
+            success: true,
+            value: {
+                mode: 'legacy',
+                global: { pretty: false },
+                legacyArgv: argv,
+            },
+        });
+    });
+
     it('routes proxy start command mode', () => {
         const result = parseCliInput(createArgv('proxy', 'start', '--port', '4724'));
 
@@ -346,6 +376,11 @@ describe('parseCliInput', () => {
             expect(result.value.route?.group).toBe('proxy');
             expect(result.value.route?.command).toBe('start');
         }
+    });
+
+    it('rejects an unknown command group in JSON command parsing', () => {
+        const result = parseCliInput(createArgv('invalid-subcommand'));
+        expect(result).toEqual({ success: false, error: "Unknown command group 'invalid-subcommand'" });
     });
 
     it('supports global output flags', () => {
@@ -392,6 +427,58 @@ describe('parseCliInput', () => {
         expect(result.success).toBe(false);
         if (!result.success) {
             expect(result.error).toBe('--pretty and --output are only supported with <group> <command> mode');
+        }
+    });
+});
+
+describe('command flag parsing', () => {
+    it('preserves positionals and supports both flag syntaxes', () => {
+        expect(parseFlags(['item', '--name', 'value', '--count=2', '--enabled'])).toEqual({
+            success: true,
+            flags: { name: 'value', count: '2', enabled: true },
+            positionals: ['item'],
+        });
+    });
+
+    it.each(['-', '-p', '--'])('rejects malformed option %s', option => {
+        expect(parseFlags([option]).success).toBe(false);
+    });
+
+    it('distinguishes missing, numeric, and invalid numeric values', () => {
+        expect(parseNumberFlag('limit', undefined)).toBeUndefined();
+        expect(parseNumberFlag('limit', '2.5')).toBe(2.5);
+        expect(() => parseNumberFlag('limit', true)).toThrow('--limit requires a value');
+        expect(() => parseNumberFlag('limit', 'NaN')).toThrow('--limit must be a number');
+    });
+
+    it('requires non-empty string values', () => {
+        expect(expectStringFlag('name', ' value ')).toBe(' value ');
+        expect(() => expectStringFlag('name', true)).toThrow('--name is required');
+        expect(() => expectStringFlag('name', '   ')).toThrow('--name is required');
+        expect(expectOptionalString('name', undefined)).toBeUndefined();
+        expect(expectOptionalString('name', ' value ')).toBe('value');
+        expect(() => expectOptionalString('name', true)).toThrow('--name requires a value');
+        expect(() => expectOptionalString('name', '')).toThrow('--name requires a non-empty value');
+        expect(() => expectOptionalString('name', '   ')).toThrow('--name requires a non-empty value');
+    });
+
+    it('only accepts bare boolean flags', () => {
+        expect(parseBooleanFlag('enabled', true)).toBe(true);
+        expect(parseBooleanFlag('enabled', undefined)).toBe(false);
+        expect(() => parseBooleanFlag('enabled', 'false')).toThrow('--enabled does not take a value');
+    });
+
+    it('reports every unexpected flag', () => {
+        expect(() => ensureNoUnexpectedFlags({ first: true, second: 'x' }, [])).toThrow(
+            'Unknown flags: --first, --second',
+        );
+    });
+
+    it.each(['__proto__', 'constructor', 'prototype'])('rejects inherited-name flag --%s', key => {
+        const result = parseFlags([`--${key}`]);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(() => ensureNoUnexpectedFlags(result.flags, [])).toThrow(`--${key}`);
         }
     });
 });

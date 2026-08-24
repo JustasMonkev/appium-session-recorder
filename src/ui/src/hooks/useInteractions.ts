@@ -1,82 +1,46 @@
 import { createSignal, onCleanup, createEffect } from 'solid-js';
 import type { Interaction } from '../types';
-import { api } from '../services/api';
+import { connectToStream, fetchInteraction, type StreamEvent } from '../services/api';
+
+export function applyStreamEvent(interactions: Interaction[], event: StreamEvent): Interaction[] {
+    if (event.type === 'init') return event.data;
+    if (event.type === 'clear') return [];
+    if (event.type === 'evict') {
+        const evicted = new Set(event.data.ids);
+        return interactions.filter(interaction => !evicted.has(interaction.id));
+    }
+
+    const existing = interactions.findIndex(interaction => interaction.id === event.data.id);
+    if (existing < 0) return [...interactions, event.data];
+    const updated = [...interactions];
+    updated[existing] = event.data;
+    return updated;
+}
+
+export function applyHydratedInteraction(
+    interactions: Interaction[],
+    summary: Interaction,
+    details: Interaction,
+): Interaction[] {
+    return interactions.map(interaction => interaction === summary ? details : interaction);
+}
 
 export function useInteractions() {
     const [interactions, setInteractions] = createSignal<Interaction[]>([]);
-    const [loading, setLoading] = createSignal(true);
 
-    // Load initial history
-    async function loadHistory() {
-        setLoading(true);
-        try {
-            const history = await api.getHistory();
-            setInteractions(history);
-        } catch (error) {
-            console.error('Failed to load history:', error);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    // Connect to SSE stream
     createEffect(() => {
-        const unsubscribe = api.connectToStream((event) => {
-            if (event.type === 'init') {
-                setInteractions(event.data);
-                setLoading(false);
-            } else if (event.type === 'interaction') {
-                setInteractions(prev => {
-                    const existing = prev.findIndex(i => i.id === event.data.id);
-                    if (existing >= 0) {
-                        // Update existing
-                        const updated = [...prev];
-                        updated[existing] = event.data;
-                        return updated;
-                    } else {
-                        // Add new
-                        return [...prev, event.data];
-                    }
-                });
-            } else if (event.type === 'evict') {
-                // Server evicted old interactions past its history cap;
-                // drop them here too so client memory stays bounded and we
-                // don't keep cards whose screenshot URLs now 404
-                const evicted = new Set<number>(event.data.ids);
-                setInteractions(prev => prev.filter(i => !evicted.has(i.id)));
-            } else if (event.type === 'clear') {
-                setInteractions([]);
-            }
+        const unsubscribe = connectToStream((event) => {
+            setInteractions(interactions => applyStreamEvent(interactions, event));
         });
 
         onCleanup(unsubscribe);
     });
 
-    // Note: loadHistory() is not called here because the SSE stream
-    // already sends the complete initial history via the 'init' event
-
-    async function clearHistory() {
-        await api.clearHistory();
-    }
-
-    async function refresh() {
-        await loadHistory();
-    }
-
-    const stats = () => {
-        const list = interactions();
-        let actions = 0;
-        for (const interaction of list) {
-            if (interaction.screenshotUrl) actions++;
-        }
-        return { total: list.length, actions };
+    const hydrateInteraction = async (summary: Interaction, signal: AbortSignal): Promise<void> => {
+        if (!summary.detailsTruncated || !summary.detailsUrl) return;
+        const details = await fetchInteraction(summary.detailsUrl, signal);
+        setInteractions(current => applyHydratedInteraction(current, summary, details));
     };
 
-    return {
-        interactions,
-        loading,
-        stats,
-        clearHistory,
-        refresh,
-    };
+    return { interactions, hydrateInteraction };
 }

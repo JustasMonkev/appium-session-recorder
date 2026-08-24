@@ -12,7 +12,7 @@ export const JourneyPanel: Component<JourneyPanelProps> = (props) => {
     const journeyActions = createMemo(() =>
         props.actions
             .map((action, originalIndex) => ({ action, originalIndex }))
-            .filter(({ action }) => action.actionKind !== 'find')
+            .filter(({ action }) => action.actionKind !== 'find' && action.screenshotUrl)
     );
 
     const currentJourneyIndex = createMemo(() => {
@@ -29,7 +29,7 @@ export const JourneyPanel: Component<JourneyPanelProps> = (props) => {
             }
         }
 
-        return entries.length > 0 ? 0 : -1;
+        return -1;
     });
 
     const currentEntry = createMemo(() => {
@@ -64,15 +64,13 @@ export const JourneyPanel: Component<JourneyPanelProps> = (props) => {
                         </Show>
                     </div>
 
-                    <Show when={currentAction()!.screenshotUrl}>
-                        <div class="journey-hero-screen">
-                            <img
-                                src={currentAction()!.screenshotUrl}
-                                alt={`Action ${currentJourneyIndex() + 1} screenshot`}
-                                class="journey-hero-image"
-                            />
-                        </div>
-                    </Show>
+                    <div class="journey-hero-screen">
+                        <img
+                            src={currentAction()!.screenshotUrl!}
+                            alt={`Action ${currentJourneyIndex() + 1} screenshot`}
+                            class="journey-hero-image"
+                        />
+                    </div>
                 </div>
 
                 <div class="journey-strip-header">
@@ -92,14 +90,12 @@ export const JourneyPanel: Component<JourneyPanelProps> = (props) => {
                                 onClick={() => props.onSelectAction?.(entry.originalIndex)}
                             >
                                 <div class="journey-thumb-frame">
-                                    <Show when={entry.action.screenshotUrl}>
-                                        <img
-                                            src={entry.action.screenshotUrl}
-                                            alt={`Action ${index() + 1}`}
-                                            class="journey-thumb-image"
-                                            loading="lazy"
-                                        />
-                                    </Show>
+                                    <img
+                                        src={entry.action.screenshotUrl!}
+                                        alt={`Action ${index() + 1}`}
+                                        class="journey-thumb-image"
+                                        loading="lazy"
+                                    />
                                 </div>
                                 <div class="journey-thumb-meta">
                                     <span class="journey-thumb-index">#{index() + 1}</span>

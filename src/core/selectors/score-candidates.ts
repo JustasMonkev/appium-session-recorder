@@ -36,20 +36,35 @@ export type ElementMatcher = (element: ParsedElement) => boolean;
 
 const neverMatches: ElementMatcher = () => false;
 
+function unescapeQuoted(value: string): string {
+    return value.replace(
+        /\\(?:u([\da-fA-F]{4})|([\\"'`nrt]))/g,
+        (_escape, hexadecimal: string | undefined, character: string | undefined) => {
+            if (hexadecimal) return String.fromCharCode(Number.parseInt(hexadecimal, 16));
+            if (character === 'n') return '\n';
+            if (character === 'r') return '\r';
+            if (character === 't') return '\t';
+            return character ?? '';
+        },
+    );
+}
+
 function compileIosPredicate(predicate: string): ElementMatcher {
-    const equalsMatch = predicate.match(/(name|label|type)\s*==\s*['"](.+?)['"]/i);
+    const equalsMatch = predicate.match(/^\s*(name|label|type)\s*==\s*(["'])((?:\\.|(?!\2)[\s\S])*)\2\s*$/i);
     if (equalsMatch) {
-        const [, field, expected] = equalsMatch;
-        if (field === 'name') return element => element.name === expected;
-        if (field === 'label') return element => element.label === expected;
+        const [, field, , encoded] = equalsMatch;
+        const expected = unescapeQuoted(encoded);
+        if (field.toLowerCase() === 'name') return element => element.name === expected;
+        if (field.toLowerCase() === 'label') return element => element.label === expected;
         return element => element.type === expected;
     }
 
-    const containsMatch = predicate.match(/(name|label|type)\s*CONTAINS\s*['"](.+?)['"]/i);
+    const containsMatch = predicate.match(/^\s*(name|label|type)\s*CONTAINS\s*(["'])((?:\\.|(?!\2)[\s\S])*)\2\s*$/i);
     if (containsMatch) {
-        const [, field, expected] = containsMatch;
-        if (field === 'name') return element => element.name.includes(expected);
-        if (field === 'label') return element => element.label.includes(expected);
+        const [, field, , encoded] = containsMatch;
+        const expected = unescapeQuoted(encoded);
+        if (field.toLowerCase() === 'name') return element => element.name.includes(expected);
+        if (field.toLowerCase() === 'label') return element => element.label.includes(expected);
         return element => element.type.includes(expected);
     }
 
@@ -57,7 +72,7 @@ function compileIosPredicate(predicate: string): ElementMatcher {
 }
 
 function compileIosClassChain(classChain: string): ElementMatcher {
-    const classChainMatch = classChain.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
+    const classChainMatch = classChain.match(/^\*\*\/([A-Za-z_][\w.:-]*)(?:\[`((?:\\.|[^`\\])*)`\])?$/);
     if (!classChainMatch) return neverMatches;
 
     const targetType = classChainMatch[1];
@@ -71,47 +86,49 @@ function compileIosClassChain(classChain: string): ElementMatcher {
 }
 
 function compileAndroidUiAutomator(value: string): ElementMatcher {
-    const calls = [...value.matchAll(/\.(\w+)\("(.+?)"\)/g)].map(([, method, expected]) => ({ method, expected }));
+    if (!/^new UiSelector\(\)(?:\.(?:resourceId|description|text|className)\("(?:\\.|[^"\\])*"\))+$/.test(value)) {
+        return neverMatches;
+    }
+    const calls = [...value.matchAll(/\.(\w+)\("((?:\\.|[^"])*)"\)/g)]
+        .map(([, method, expected]) => ({ method, expected: unescapeQuoted(expected) }));
     if (calls.length === 0) return neverMatches;
 
     return element => calls.every(({ method, expected }) => {
         if (method === 'resourceId') return element.resourceId === expected;
         if (method === 'description') return element.contentDesc === expected;
-        if (method === 'text') return element.text === expected || element.label === expected;
+        if (method === 'text') return element.text === expected;
         if (method === 'className') return element.type === expected;
         return false;
     });
 }
 
 function compileSimpleXPath(xpath: string): ElementMatcher {
-    const attrConditions = [...xpath.matchAll(/@(\w+)="([^"]+)"/g)].map(([, attribute, expected]) => ({ attribute, expected }));
+    const descendantNode = xpath.match(/^\/\/([^/*\[]+)/)?.[1];
+    const attrConditions = [
+        ...[...xpath.matchAll(/@([\w-]+)="([^"]*)"/g)].map(([, attribute, expected]) => ({ attribute, expected })),
+        ...[...xpath.matchAll(/@([\w-]+)='([^']*)'/g)].map(([, attribute, expected]) => ({ attribute, expected })),
+    ];
 
     return element => {
         if (xpath === element.xpath) return true;
         if (attrConditions.length === 0) return false;
+        if (descendantNode) {
+            const actualNode = element.xpath.match(/\/([^/[]+)\[\d+\]$/)?.[1];
+            if (actualNode !== descendantNode) return false;
+        }
 
-        return attrConditions.every(({ attribute, expected }) => {
-            if (attribute === 'type') return element.type === expected;
-            if (attribute === 'name') return element.name === expected;
-            if (attribute === 'label') return element.label === expected;
-            if (attribute === 'text') return element.text === expected;
-            if (attribute === 'resource-id') return element.resourceId === expected;
-            if (attribute === 'content-desc') return element.contentDesc === expected;
-            return element.attributes[attribute] === expected;
-        });
+        return attrConditions.every(({ attribute, expected }) => element.attributes[attribute] === expected);
     };
 }
 
-/**
- * Parse a candidate once into a reusable matcher so matching against many
- * elements (or many snapshots) doesn't re-run the regex parsing per element.
- */
 export function compileCandidateMatcher(candidate: SelectorCandidate): ElementMatcher {
     switch (candidate.strategy) {
         case 'id':
             return element => element.resourceId === candidate.value;
         case 'accessibility id':
-            return element => (
+            return candidate.platform === 'android'
+                ? element => element.contentDesc === candidate.value
+                : element => (
                 element.name === candidate.value ||
                 element.label === candidate.value ||
                 element.contentDesc === candidate.value
@@ -129,10 +146,6 @@ export function compileCandidateMatcher(candidate: SelectorCandidate): ElementMa
         default:
             return neverMatches;
     }
-}
-
-export function candidateMatchesElement(candidate: SelectorCandidate, element: ParsedElement): boolean {
-    return compileCandidateMatcher(candidate)(element);
 }
 
 export function rankSelectorCandidates(
@@ -186,7 +199,7 @@ export function rankSelectorCandidates(
 
         return {
             ...candidate,
-            score: Math.max(0, Math.min(100, Math.round(score))),
+            score: Math.round(score),
             matchCount,
             reasons,
         };
@@ -196,5 +209,8 @@ export function rankSelectorCandidates(
         if (b.score !== a.score) return b.score - a.score;
         if (a.matchCount !== b.matchCount) return a.matchCount - b.matchCount;
         return a.value.localeCompare(b.value);
-    });
+    }).map(selector => ({
+        ...selector,
+        score: Math.max(0, Math.min(100, selector.score)),
+    }));
 }

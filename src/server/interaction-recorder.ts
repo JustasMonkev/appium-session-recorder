@@ -1,64 +1,58 @@
 import type { CapturedState, Interaction, ServerEvent } from './types';
+import { isXmlWithinLimits } from '../core/xml/xml-limits';
 
-const ACTION_PATTERNS: readonly RegExp[] = [
-    /\/element\/[^/]+\/click$/,
-    /\/element\/[^/]+\/value$/,
-    /\/element\/[^/]+\/clear$/,
-    /\/element$/,
-    /\/elements$/,
-    /\/touch\/perform$/,
-    /\/actions$/,
-    /\/back$/,
-    /\/forward$/,
-    /\/refresh$/,
-];
-
-// Upper bound on retained interactions so long sessions don't grow memory
-// without limit (each action carries a screenshot and a full XML source).
 const MAX_HISTORY = 500;
+const MAX_RETAINED_BYTES = 100 * 1024 * 1024;
 
-export type ServerEventListener = (event: ServerEvent, serialized: string) => void;
+export type ServerEventListener = (event: ServerEvent) => void;
+
+export function classifyAction(method: string, path: string): Interaction['actionKind'] {
+    if (method !== 'POST') return 'unknown';
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+    if (/\/element\/[^/]+\/click$/.test(path)) return 'tap';
+    if (/\/element\/[^/]+\/value$/.test(path)) return 'type';
+    if (/\/element\/[^/]+\/clear$/.test(path)) return 'clear';
+    if (/\/elements?$/.test(path)) return 'find';
+    if (/\/(?:touch\/perform|actions)$/.test(path)) return 'swipe';
+    if (/\/back$/.test(path)) return 'back';
+    if (/\/forward$/.test(path)) return 'forward';
+    if (/\/refresh$/.test(path)) return 'refresh';
+    return 'unknown';
+}
 
 export class InteractionRecorder {
     private history: Interaction[] = [];
-    private byId = new Map<number, Interaction>();
-    private screenshots = new Map<number, Buffer>();
+    private readonly byId = new Map<number, Interaction>();
+    private readonly screenshots = new Map<number, Buffer>();
+    private readonly bytesById = new Map<number, number>();
+    private retainedBytes = 0;
     private interactionId = 0;
-    private listeners: Set<ServerEventListener> = new Set();
-
-    shouldRecord(method: string, path: string): boolean {
-        if (method === 'POST') {
-            return true;
-        }
-        return false;
-    }
-
-    isActionEndpoint(method: string, path: string): boolean {
-        if (method === 'POST' || method === 'DELETE') {
-            return ACTION_PATTERNS.some(pattern => pattern.test(path));
-        }
-        return false;
-    }
+    private validatedSource?: { id: number; value: string };
+    private readonly listeners = new Set<ServerEventListener>();
 
     recordInteraction(interaction: Omit<Interaction, 'id' | 'timestamp'>): Interaction {
         const fullInteraction: Interaction = {
-            id: ++this.interactionId,
+            id: this.interactionId + 1,
             timestamp: new Date().toISOString(),
-            ...interaction,
+            method: interaction.method,
+            path: interaction.path,
         };
-
+        if (interaction.screenshotUrl) fullInteraction.screenshotUrl = interaction.screenshotUrl;
+        if (interaction.source) fullInteraction.source = interaction.source;
+        if (interaction.elementInfo) fullInteraction.elementInfo = interaction.elementInfo;
+        if (interaction.actionKind) fullInteraction.actionKind = interaction.actionKind;
+        if (interaction.captureStatus) fullInteraction.captureStatus = interaction.captureStatus;
+        const bytes = Buffer.byteLength(JSON.stringify(fullInteraction));
+        const event: ServerEvent = { type: 'interaction', data: fullInteraction };
+        this.interactionId = fullInteraction.id;
         this.history.push(fullInteraction);
         this.byId.set(fullInteraction.id, fullInteraction);
+        this.bytesById.set(fullInteraction.id, bytes);
+        this.retainedBytes += bytes;
 
-        const evictedIds: number[] = [];
-        while (this.history.length > MAX_HISTORY) {
-            const evicted = this.history.shift()!;
-            this.byId.delete(evicted.id);
-            this.screenshots.delete(evicted.id);
-            evictedIds.push(evicted.id);
-        }
+        const evictedIds = this.evictOverflow();
 
-        this.emit({ type: 'interaction', data: fullInteraction });
+        this.emit(event);
         if (evictedIds.length > 0) {
             this.emit({ type: 'evict', data: { ids: evictedIds } });
         }
@@ -66,40 +60,56 @@ export class InteractionRecorder {
         return fullInteraction;
     }
 
-    updateInteraction(id: number, updates: Partial<Interaction>): void {
-        const interaction = this.byId.get(id);
-        if (interaction) {
-            Object.assign(interaction, updates);
-            this.emit({ type: 'interaction', data: interaction });
-        }
-    }
-
-    /**
-     * Attach a captured screenshot/source to an interaction. The screenshot is
-     * stored as a decoded Buffer and exposed via `screenshotUrl` instead of
-     * being embedded as base64 in every history/SSE payload.
-     */
     attachCapturedState(id: number, state: CapturedState): void {
         const interaction = this.byId.get(id);
         if (!interaction) return;
 
         if (state.screenshot) {
             this.screenshots.set(id, Buffer.from(state.screenshot, 'base64'));
-            // The capture-time token makes the URL unique even if interaction
-            // ids are reused (clearHistory resets the counter, and ids restart
-            // across server runs), so immutable caching can never serve a
-            // stale screenshot for a new capture.
             interaction.screenshotUrl = `/_recorder/api/screenshot/${id}?v=${Date.now()}`;
         }
-        if (state.source) {
+        if (
+            state.source
+            && (state.source === this.validatedSource?.value || isXmlWithinLimits(state.source))
+        ) {
             interaction.source = state.source;
+            this.validatedSource = { id, value: state.source };
         }
+        interaction.captureStatus = interaction.source && interaction.screenshotUrl
+            ? 'complete'
+            : interaction.source || interaction.screenshotUrl ? 'partial' : 'failed';
 
-        this.emit({ type: 'interaction', data: interaction });
+        const previousBytes = this.bytesById.get(id) ?? 0;
+        const bytes = Buffer.byteLength(JSON.stringify(interaction)) + (this.screenshots.get(id)?.length ?? 0);
+        this.bytesById.set(id, bytes);
+        this.retainedBytes += bytes - previousBytes;
+
+        const evictedIds = this.evictOverflow();
+        if (this.byId.has(id)) this.emit({ type: 'interaction', data: interaction });
+        if (evictedIds.length > 0) this.emit({ type: 'evict', data: { ids: evictedIds } });
     }
 
     getScreenshot(id: number): Buffer | undefined {
         return this.screenshots.get(id);
+    }
+
+    getInteraction(id: number): Interaction | undefined {
+        return this.byId.get(id);
+    }
+
+    markCaptureUnavailable(id: number, status: 'failed' | 'skipped'): void {
+        const interaction = this.byId.get(id);
+        if (!interaction) return;
+        interaction.captureStatus = status;
+
+        const previousBytes = this.bytesById.get(id) ?? 0;
+        const bytes = Buffer.byteLength(JSON.stringify(interaction)) + (this.screenshots.get(id)?.length ?? 0);
+        this.bytesById.set(id, bytes);
+        this.retainedBytes += bytes - previousBytes;
+
+        const evictedIds = this.evictOverflow();
+        if (this.byId.has(id)) this.emit({ type: 'interaction', data: interaction });
+        if (evictedIds.length > 0) this.emit({ type: 'evict', data: { ids: evictedIds } });
     }
 
     getHistory(): Interaction[] {
@@ -110,7 +120,9 @@ export class InteractionRecorder {
         this.history = [];
         this.byId.clear();
         this.screenshots.clear();
-        this.interactionId = 0;
+        this.bytesById.clear();
+        this.retainedBytes = 0;
+        this.validatedSource = undefined;
         this.emit({ type: 'clear', data: null });
     }
 
@@ -120,8 +132,22 @@ export class InteractionRecorder {
     }
 
     private emit(event: ServerEvent): void {
-        // Serialize once so every SSE client doesn't re-stringify the payload.
-        const serialized = JSON.stringify(event);
-        this.listeners.forEach(listener => listener(event, serialized));
+        this.listeners.forEach(listener => listener(event));
+    }
+
+    private evictOverflow(): number[] {
+        const evictedIds: number[] = [];
+        while (this.history.length > MAX_HISTORY || this.retainedBytes > MAX_RETAINED_BYTES) {
+            const evicted = this.history.shift();
+            if (!evicted) break;
+
+            this.byId.delete(evicted.id);
+            this.screenshots.delete(evicted.id);
+            this.retainedBytes -= this.bytesById.get(evicted.id) ?? 0;
+            this.bytesById.delete(evicted.id);
+            if (this.validatedSource?.id === evicted.id) this.validatedSource = undefined;
+            evictedIds.push(evicted.id);
+        }
+        return evictedIds;
     }
 }

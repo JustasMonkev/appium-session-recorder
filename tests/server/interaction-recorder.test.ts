@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { InteractionRecorder } from '../../src/server/interaction-recorder';
-import type { ServerEvent, Interaction } from '../../src/server/types';
+import { classifyAction, InteractionRecorder } from '../../src/server/interaction-recorder';
+import type { ServerEvent } from '../../src/server/types';
 
 describe('InteractionRecorder', () => {
     let recorder: InteractionRecorder;
@@ -9,102 +9,95 @@ describe('InteractionRecorder', () => {
         recorder = new InteractionRecorder();
     });
 
-    describe('shouldRecord', () => {
-        it('should return true for POST requests', () => {
-            expect(recorder.shouldRecord('POST', '/session/123/element')).toBe(true);
+    describe('recording method boundary', () => {
+        it.each(['GET', 'PUT', 'DELETE', 'PATCH'])('does not classify %s requests as actions', method => {
+            expect(classifyAction(method, '/session/123/element/abc123/click')).toBe('unknown');
         });
 
-        it('should return false for GET requests', () => {
-            expect(recorder.shouldRecord('GET', '/session/123/element')).toBe(false);
-        });
-
-        it('should return false for PUT requests', () => {
-            expect(recorder.shouldRecord('PUT', '/session/123/element')).toBe(false);
-        });
-
-        it('should return false for DELETE requests', () => {
-            expect(recorder.shouldRecord('DELETE', '/session/123/element')).toBe(false);
-        });
-
-        it('should return false for PATCH requests', () => {
-            expect(recorder.shouldRecord('PATCH', '/session/123/element')).toBe(false);
+        it('classifies a POST action', () => {
+            expect(classifyAction('POST', '/session/123/element/abc123/click')).toBe('tap');
         });
     });
 
-    describe('isActionEndpoint', () => {
+    describe('classifyAction', () => {
         describe('POST method', () => {
             it('should identify click endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/element/abc123/click')).toBe(true);
+                expect(classifyAction('POST', '/session/123/element/abc123/click')).toBe('tap');
             });
 
             it('should identify value endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/element/abc123/value')).toBe(true);
+                expect(classifyAction('POST', '/session/123/element/abc123/value')).toBe('type');
             });
 
             it('should identify clear endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/element/abc123/clear')).toBe(true);
+                expect(classifyAction('POST', '/session/123/element/abc123/clear')).toBe('clear');
             });
 
             it('should identify element endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/element')).toBe(true);
+                expect(classifyAction('POST', '/session/123/element')).toBe('find');
             });
 
             it('should identify elements endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/elements')).toBe(true);
+                expect(classifyAction('POST', '/session/123/elements')).toBe('find');
             });
 
             it('should identify touch/perform endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/touch/perform')).toBe(true);
+                expect(classifyAction('POST', '/session/123/touch/perform')).toBe('swipe');
             });
 
             it('should identify actions endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/actions')).toBe(true);
+                expect(classifyAction('POST', '/session/123/actions')).toBe('swipe');
             });
 
             it('should identify back endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/back')).toBe(true);
+                expect(classifyAction('POST', '/session/123/back')).toBe('back');
             });
 
             it('should identify forward endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/forward')).toBe(true);
+                expect(classifyAction('POST', '/session/123/forward')).toBe('forward');
             });
 
             it('should identify refresh endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/refresh')).toBe(true);
+                expect(classifyAction('POST', '/session/123/refresh')).toBe('refresh');
             });
         });
 
         describe('DELETE method', () => {
-            it('should identify action endpoints for DELETE', () => {
-                expect(recorder.isActionEndpoint('DELETE', '/session/123/element/abc123/click')).toBe(true);
+            it('should not classify unrecorded DELETE requests as actions', () => {
+                expect(classifyAction('DELETE', '/session/123/element/abc123/click')).toBe('unknown');
             });
         });
 
         describe('non-action endpoints', () => {
             it('should return false for GET requests', () => {
-                expect(recorder.isActionEndpoint('GET', '/session/123/element/abc123/click')).toBe(false);
+                expect(classifyAction('GET', '/session/123/element/abc123/click')).toBe('unknown');
             });
 
             it('should return false for screenshot endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/screenshot')).toBe(false);
+                expect(classifyAction('POST', '/session/123/screenshot')).toBe('unknown');
             });
 
             it('should return false for source endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/source')).toBe(false);
+                expect(classifyAction('POST', '/session/123/source')).toBe('unknown');
             });
 
             it('should return false for window endpoint', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/window')).toBe(false);
+                expect(classifyAction('POST', '/session/123/window')).toBe('unknown');
             });
         });
 
         describe('edge cases', () => {
             it('should handle element IDs with special characters', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/element/abc-123_xyz/click')).toBe(true);
+                expect(classifyAction('POST', '/session/123/element/abc-123_xyz/click')).toBe('tap');
             });
 
             it('should handle UUIDs as element IDs', () => {
-                expect(recorder.isActionEndpoint('POST', '/session/123/element/550e8400-e29b-41d4-a716-446655440000/click')).toBe(true);
+                expect(classifyAction('POST', '/session/123/element/550e8400-e29b-41d4-a716-446655440000/click')).toBe('tap');
+            });
+
+            it('accepts one trailing slash on Appium action paths', () => {
+                expect(classifyAction('POST', '/session/123/element/abc/click/')).toBe('tap');
+                expect(classifyAction('POST', '/session/123/back/')).toBe('back');
             });
         });
     });
@@ -148,14 +141,15 @@ describe('InteractionRecorder', () => {
             expect(history[0]).toEqual(interaction);
         });
 
-        it('should include body if provided', () => {
-            const interaction = recorder.recordInteraction({
+        it('does not retain an untyped request body extension', () => {
+            const input: { method: string; path: string } & Record<string, unknown> = {
                 method: 'POST',
                 path: '/session/123/element',
                 body: { using: 'xpath', value: '//button' },
-            });
+            };
+            const interaction = recorder.recordInteraction(input);
 
-            expect(interaction.body).toEqual({ using: 'xpath', value: '//button' });
+            expect('body' in interaction).toBe(false);
         });
 
         it('should include elementInfo if provided', () => {
@@ -183,78 +177,69 @@ describe('InteractionRecorder', () => {
                     type: 'interaction',
                     data: interaction,
                 },
-                JSON.stringify({ type: 'interaction', data: interaction }),
             );
+        });
+
+        it('ignores deeply nested untyped request data without compromising history', () => {
+            const body: Record<string, unknown> = {};
+            let cursor = body;
+            for (let depth = 0; depth < 5_000; depth++) {
+                const child: Record<string, unknown> = {};
+                cursor.child = child;
+                cursor = child;
+            }
+
+            const input: { method: string; path: string } & Record<string, unknown> = {
+                method: 'POST', path: '/deep', body,
+            };
+            const recorded = recorder.recordInteraction(input);
+            expect(recorded).toMatchObject({ id: 1, path: '/deep' });
+            expect('body' in recorded).toBe(false);
+            expect(recorder.recordInteraction({ method: 'POST', path: '/valid' }).id).toBe(2);
         });
     });
 
-    describe('updateInteraction', () => {
-        it('should update existing interaction', () => {
-            const interaction = recorder.recordInteraction({
-                method: 'POST',
-                path: '/session/123/element',
-            });
+    describe('captured-state isolation', () => {
+        it('should ignore a stale capture after history is cleared', () => {
+            const stale = recorder.recordInteraction({ method: 'POST', path: '/old' });
+            recorder.clearHistory();
+            const current = recorder.recordInteraction({ method: 'POST', path: '/current' });
 
-            recorder.updateInteraction(interaction.id, {
-                source: '<xml>source</xml>',
-            });
+            recorder.attachCapturedState(stale.id, { source: '<stale />' });
 
-            const history = recorder.getHistory();
-            expect(history[0].source).toBe('<xml>source</xml>');
+            expect(current.id).toBeGreaterThan(stale.id);
+            expect(recorder.getHistory()).toEqual([current]);
+            expect(current.source).toBeUndefined();
         });
 
-        it('should emit event on update', () => {
-            const listener = vi.fn();
-            const interaction = recorder.recordInteraction({
-                method: 'POST',
-                path: '/session/123/element',
-            });
-
-            recorder.on(listener);
-            recorder.updateInteraction(interaction.id, {
-                source: '<xml>source</xml>',
-            });
-
-            expect(listener).toHaveBeenCalledTimes(1);
-            expect(listener).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    type: 'interaction',
-                    data: expect.objectContaining({
-                        source: '<xml>source</xml>',
-                    }),
-                }),
-                expect.any(String),
-            );
-        });
-
-        it('should not emit event for non-existent interaction', () => {
+        it('should emit the exact captured state to listeners', () => {
+            const interaction = recorder.recordInteraction({ method: 'POST', path: '/action' });
             const listener = vi.fn();
             recorder.on(listener);
 
-            recorder.updateInteraction(999, {
-                source: '<xml>source</xml>',
-            });
+            recorder.attachCapturedState(interaction.id, { source: '<screen />' });
 
-            expect(listener).not.toHaveBeenCalled();
+            const event: ServerEvent = { type: 'interaction', data: interaction };
+            expect(listener).toHaveBeenCalledWith(event);
         });
 
-        it('should not affect other interactions', () => {
-            const interaction1 = recorder.recordInteraction({
-                method: 'POST',
-                path: '/session/123/element',
-            });
-            const interaction2 = recorder.recordInteraction({
-                method: 'POST',
-                path: '/session/123/elements',
-            });
+        it('should ignore unknown interaction ids without mutating history', () => {
+            const interaction = recorder.recordInteraction({ method: 'POST', path: '/action' });
+            const before = JSON.stringify(recorder.getHistory());
 
-            recorder.updateInteraction(interaction1.id, {
-                source: '<xml>source</xml>',
-            });
+            recorder.attachCapturedState(interaction.id + 1, { source: '<unknown />' });
 
-            const history = recorder.getHistory();
-            expect(history[0].source).toBe('<xml>source</xml>');
-            expect(history[1].source).toBeUndefined();
+            expect(JSON.stringify(recorder.getHistory())).toBe(before);
+        });
+
+        it('should update only the targeted interaction', () => {
+            const first = recorder.recordInteraction({ method: 'POST', path: '/first' });
+            const second = recorder.recordInteraction({ method: 'POST', path: '/second' });
+
+            recorder.attachCapturedState(first.id, { source: '<first />' });
+
+            expect(first.source).toBe('<first />');
+            expect(second.source).toBeUndefined();
         });
     });
 
@@ -278,6 +263,7 @@ describe('InteractionRecorder', () => {
             );
             expect(history[0].source).toBe('<xml>source</xml>');
             expect(recorder.getScreenshot(interaction.id)).toEqual(Buffer.from('fake-png-bytes'));
+            expect(history[0].captureStatus).toBe('complete');
         });
 
         it('should not embed base64 screenshot data in the interaction payload', () => {
@@ -303,6 +289,30 @@ describe('InteractionRecorder', () => {
             expect(history[0].screenshotUrl).toBeUndefined();
             expect(history[0].source).toBeUndefined();
             expect(recorder.getScreenshot(interaction.id)).toBeUndefined();
+            expect(history[0].captureStatus).toBe('failed');
+        });
+
+        it.each([
+            [{ source: '<screen />' }, 'partial'],
+            [{ screenshot: base64Png }, 'partial'],
+        ] as const)('marks one-sided capture %j as %s', (state, status) => {
+            const interaction = recorder.recordInteraction({ method: 'POST', path: '/action' });
+
+            recorder.attachCapturedState(interaction.id, state);
+
+            expect(interaction.captureStatus).toBe(status);
+        });
+
+        it.each(['failed', 'skipped'] as const)('marks unavailable captures as %s', status => {
+            const interaction = recorder.recordInteraction({
+                method: 'POST',
+                path: '/action',
+                captureStatus: 'pending',
+            });
+
+            recorder.markCaptureUnavailable(interaction.id, status);
+
+            expect(interaction.captureStatus).toBe(status);
         });
 
         it('should emit a single update event', () => {
@@ -368,14 +378,14 @@ describe('InteractionRecorder', () => {
             expect(recorder.getHistory()).toEqual([]);
         });
 
-        it('should reset interaction ID counter', () => {
+        it('should keep IDs monotonic so stale captures cannot target new interactions', () => {
             recorder.recordInteraction({ method: 'POST', path: '/path1' });
             recorder.recordInteraction({ method: 'POST', path: '/path2' });
 
             recorder.clearHistory();
 
             const newInteraction = recorder.recordInteraction({ method: 'POST', path: '/path3' });
-            expect(newInteraction.id).toBe(1);
+            expect(newInteraction.id).toBe(3);
         });
 
         it('should emit clear event', () => {
@@ -389,7 +399,6 @@ describe('InteractionRecorder', () => {
                     type: 'clear',
                     data: null,
                 },
-                JSON.stringify({ type: 'clear', data: null }),
             );
         });
 
@@ -438,13 +447,25 @@ describe('InteractionRecorder', () => {
             expect(listener).toHaveBeenNthCalledWith(
                 1,
                 expect.objectContaining({ type: 'interaction' }),
-                expect.any(String),
             );
             expect(listener).toHaveBeenNthCalledWith(
                 2,
                 { type: 'evict', data: { ids: [first.id] } },
-                JSON.stringify({ type: 'evict', data: { ids: [first.id] } }),
             );
+        });
+
+        it('should evict oldest payloads when retained state exceeds 100 MiB', () => {
+            const largeSource = `<Root>${'x'.repeat(9 * 1024 * 1024)}</Root>`;
+            const interactions = Array.from({ length: 12 }, (_, index) => {
+                const interaction = recorder.recordInteraction({ method: 'POST', path: `/large-${index}` });
+                recorder.attachCapturedState(interaction.id, { source: largeSource });
+                return interaction;
+            });
+
+            const retainedIds = recorder.getHistory().map(interaction => interaction.id);
+            expect(retainedIds).not.toContain(interactions[0].id);
+            expect(retainedIds).toContain(interactions[4].id);
+            expect(recorder.getHistory().length).toBeLessThan(interactions.length);
         });
     });
 

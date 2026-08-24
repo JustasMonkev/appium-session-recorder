@@ -1,51 +1,31 @@
 import * as p from '@clack/prompts';
-import type {RecorderOptions} from '../server/types';
+import { validateHost, validatePort, validateUrl } from './arg-parser';
+import { DEFAULT_RECORDER_OPTIONS, type RecorderOptions } from '../server/types';
 
-export async function runPrompts(): Promise<Partial<RecorderOptions>> {
+export async function runPrompts(defaults = DEFAULT_RECORDER_OPTIONS): Promise<RecorderOptions> {
     console.clear();
 
     p.intro('🎬 Appium Session Recorder');
-
-    const defaults = {
-        port: '4724',
-        host: '127.0.0.1',
-        appiumUrl: 'http://127.0.0.1:4723',
-    } as const;
 
     const answers = await p.group(
         {
             port: () => p.text({
                 message: `Proxy port (default: ${defaults.port}):`,
-                placeholder: defaults.port,
-                defaultValue: defaults.port,
-                validate: (value) => {
-                    if (!value || value.trim().length === 0) return;
-                    const num = Number(value);
-                    if (isNaN(num) || num < 1 || num > 65535) {
-                        return 'Please enter a valid port number (1-65535)';
-                    }
-                },
+                placeholder: String(defaults.port),
+                defaultValue: String(defaults.port),
+                validate: (value) => value === undefined ? undefined : validatePort(value),
             }),
             host: () => p.text({
                 message: `Proxy host (default: ${defaults.host}):`,
                 placeholder: defaults.host,
                 defaultValue: defaults.host,
-                validate: (value) => {
-                    if (!value || value.trim().length === 0) return undefined;
-                },
+                validate: (value) => value === undefined ? undefined : validateHost(value),
             }),
             appiumUrl: () => p.text({
                 message: `Appium server URL (default: ${defaults.appiumUrl}):`,
                 placeholder: defaults.appiumUrl,
                 defaultValue: defaults.appiumUrl,
-                validate: (value) => {
-                    if (!value || value.trim().length === 0) return;
-                    try {
-                        new URL(value);
-                    } catch {
-                        return 'Please enter a valid URL';
-                    }
-                },
+                validate: (value) => value === undefined ? undefined : validateUrl(value),
             }),
         },
         {
@@ -56,9 +36,8 @@ export async function runPrompts(): Promise<Partial<RecorderOptions>> {
         }
     );
 
-    return {
-        port: Number((answers.port as string) || defaults.port),
-        host: ((answers.host as string) || defaults.host).trim(),
-        appiumUrl: ((answers.appiumUrl as string) || defaults.appiumUrl).trim(),
-    };
+    const port = typeof answers.port === 'string' ? answers.port : String(defaults.port);
+    const host = typeof answers.host === 'string' ? answers.host : defaults.host;
+    const appiumUrl = typeof answers.appiumUrl === 'string' ? answers.appiumUrl : defaults.appiumUrl;
+    return { port: Number(port), host: host.trim(), appiumUrl: appiumUrl.trim() };
 }

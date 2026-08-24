@@ -40,8 +40,9 @@ export function evaluateSelectorStability(
 
             if (matchCount === 1) {
                 stableSteps++;
-            } else if (firstFailureStep === 0) {
+            } else {
                 firstFailureStep = i + 1; // 1-based
+                break;
             }
         }
 
@@ -53,11 +54,7 @@ export function evaluateSelectorStability(
         };
     });
 
-    // Sort by most stable steps descending, then by latest first-failure
-    results.sort((a, b) => {
-        if (b.stableSteps !== a.stableSteps) return b.stableSteps - a.stableSteps;
-        return a.firstFailureStep - b.firstFailureStep; // 0 means never fails, sorts first
-    });
+    results.sort((a, b) => b.stableSteps - a.stableSteps);
 
     return {
         results,

@@ -1,53 +1,10 @@
-export type ActionKind =
-    | 'tap'
-    | 'type'
-    | 'clear'
-    | 'back'
-    | 'swipe'
-    | 'scroll'
-    | 'find'
-    | 'unknown';
+import type { ParsedElement as CoreParsedElement } from '../../core/types';
+import type { Interaction as ServerInteraction } from '../../server/types';
 
-export type Interaction = {
-    id: number;
-    timestamp: string;
-    method: string;
-    path: string;
-    body?: any;
-    screenshotUrl?: string;
-    source?: string;
-    elementInfo?: {
-        using: string;
-        value: string;
-    };
-    sessionId?: string;
-    actionKind?: ActionKind;
-};
+export type Interaction = ServerInteraction;
 
-export type ParsedElement = {
-    type: string;
-    name: string;
-    label: string;
-    value: string;
-    enabled: boolean;
-    visible: boolean;
-    accessible: boolean;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    xpath: string;
+export type ParsedElement = CoreParsedElement & {
     node: Element;
-};
-
-export type Locator = {
-    strategy: string;
-    value: string;
-};
-
-export type DiffSegment = {
-    type: 'equal' | 'insert' | 'delete';
-    text: string;
 };
 
 export type DiffLine = {
@@ -65,8 +22,6 @@ export type DiffRow = {
 };
 
 export type DiffSummary = {
-    segments: DiffSegment[];
-    lines: DiffLine[];
     rows: DiffRow[];
     prevElementCount: number;
     currElementCount: number;

@@ -5,12 +5,13 @@ export default defineConfig({
         globals: true,
         environment: 'node',
         include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
-        exclude: ['src/ui/**/*'],
+        exclude: ['src/ui/**/*', 'tests/ui/**/*'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],
-            include: ['src/server/**/*.ts', 'src/cli/**/*.ts'],
-            exclude: ['src/ui/**/*', '**/*.test.ts', '**/index.ts'],
+            reportsDirectory: 'coverage/core',
+            include: ['src/{server,cli,core}/**/*.ts'],
+            exclude: ['src/ui/**/*', '**/*.test.ts', 'src/index.ts'],
         },
     },
 });

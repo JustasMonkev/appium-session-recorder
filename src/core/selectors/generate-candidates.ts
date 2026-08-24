@@ -9,14 +9,57 @@ function pushUnique(candidates: SelectorCandidate[], candidate: SelectorCandidat
 }
 
 function escapeDoubleQuoted(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return Array.from(value, character => {
+        if (character === '\\') return '\\\\';
+        if (character === '"') return '\\"';
+        if (character === '\n') return '\\n';
+        if (character === '\r') return '\\r';
+        if (character === '\t') return '\\t';
+        const codePoint = character.codePointAt(0)!;
+        return codePoint < 0x20 || codePoint === 0x7f || codePoint === 0x2028 || codePoint === 0x2029
+            ? `\\u${codePoint.toString(16).padStart(4, '0')}`
+            : character;
+    }).join('');
+}
+
+function escapeClassChainValue(value: string): string {
+    return escapeDoubleQuoted(value).replace(/`/g, '\\`');
+}
+
+function xpathLiteral(value: string): string | undefined {
+    if (!value.includes('"')) return `"${value}"`;
+    if (!value.includes("'")) return `'${value}'`;
+    return undefined;
+}
+
+function actualAttribute(
+    element: ParsedElement,
+    names: readonly string[],
+    value: string,
+): [string, string] | undefined {
+    if (!value) return undefined;
+    const name = names.find(candidate => element.attributes[candidate] === value);
+    return name ? [name, value] : undefined;
+}
+
+function xpathNodeConstraint(element: ParsedElement): { node: string; condition?: string } {
+    const typeLiteral = xpathLiteral(element.type);
+    if (typeLiteral && element.attributes.type === element.type) {
+        return { node: '*', condition: `@type=${typeLiteral}` };
+    }
+    if (typeLiteral && element.attributes.class === element.type) {
+        return { node: '*', condition: `@class=${typeLiteral}` };
+    }
+    return { node: element.xpath.match(/\/([^/[]+)\[\d+\]$/)?.[1] ?? '*' };
 }
 
 export function generateSelectorCandidates(element: ParsedElement): SelectorCandidate[] {
     const candidates: SelectorCandidate[] = [];
     const platform: Platform = element.platform;
 
-    const primaryAccessibility = element.name || element.label || element.contentDesc;
+    const primaryAccessibility = platform === 'android'
+        ? element.contentDesc
+        : element.name || element.label || element.contentDesc;
     if (primaryAccessibility) {
         pushUnique(candidates, {
             strategy: 'accessibility id',
@@ -42,7 +85,7 @@ export function generateSelectorCandidates(element: ParsedElement): SelectorCand
             });
             pushUnique(candidates, {
                 strategy: '-ios class chain',
-                value: `**/${element.type}[\`name == "${escapeDoubleQuoted(element.name)}"\`]`,
+                value: `**/${element.type}[\`name == "${escapeClassChainValue(element.name)}"\`]`,
                 platform,
             });
         }
@@ -92,13 +135,20 @@ export function generateSelectorCandidates(element: ParsedElement): SelectorCand
         }
     }
 
-    if (element.type && (element.name || element.label || element.text)) {
-        const attrName = element.platform === 'android' ? 'text' : 'name';
-        const attrValue = element.platform === 'android' ? element.text || element.label : element.name || element.label;
-        if (attrValue) {
+    if (element.type) {
+        const attribute = platform === 'android'
+            ? actualAttribute(element, ['resource-id', 'resourceId', 'id'], element.resourceId)
+                ?? actualAttribute(element, ['content-desc', 'contentDesc'], element.contentDesc)
+                ?? actualAttribute(element, ['text', 'value', 'label'], element.text || element.label)
+            : actualAttribute(element, ['name'], element.name)
+                ?? actualAttribute(element, ['label'], element.label);
+        const valueLiteral = xpathLiteral(attribute?.[1] ?? '');
+        if (attribute && valueLiteral) {
+            const { node, condition } = xpathNodeConstraint(element);
+            const conditions = [condition, `@${attribute[0]}=${valueLiteral}`].filter(Boolean).join(' and ');
             pushUnique(candidates, {
                 strategy: 'xpath',
-                value: `//*[@type="${escapeDoubleQuoted(element.type)}" and @${attrName}="${escapeDoubleQuoted(attrValue)}"]`,
+                value: `//${node}[${conditions}]`,
                 platform: 'generic',
             });
         }
@@ -108,48 +158,4 @@ export function generateSelectorCandidates(element: ParsedElement): SelectorCand
     pushUnique(candidates, { strategy: 'class name', value: element.type, platform: 'generic' });
 
     return candidates;
-}
-
-export type LegacyLocatorInput = {
-    type: string;
-    name: string;
-    label: string;
-    xpath: string;
-};
-
-export function generateLegacyLocators(element: LegacyLocatorInput): SelectorCandidate[] {
-    const locators: SelectorCandidate[] = [];
-
-    if (element.name) {
-        locators.push({ strategy: 'accessibility id', value: element.name, platform: 'ios' });
-    }
-    if (element.label && element.label !== element.name) {
-        locators.push({ strategy: 'accessibility id', value: element.label, platform: 'ios' });
-    }
-    locators.push({ strategy: 'xpath', value: element.xpath, platform: 'generic' });
-    locators.push({ strategy: 'class name', value: element.type, platform: 'generic' });
-
-    if (element.name) {
-        locators.push({
-            strategy: '-ios predicate string',
-            value: `name == "${escapeDoubleQuoted(element.name)}"`,
-            platform: 'ios',
-        });
-    }
-    if (element.label) {
-        locators.push({
-            strategy: '-ios predicate string',
-            value: `label == "${escapeDoubleQuoted(element.label)}"`,
-            platform: 'ios',
-        });
-    }
-    if (element.name) {
-        locators.push({
-            strategy: '-ios class chain',
-            value: `**/${element.type}[\`name == "${escapeDoubleQuoted(element.name)}"\`]`,
-            platform: 'ios',
-        });
-    }
-
-    return locators;
 }

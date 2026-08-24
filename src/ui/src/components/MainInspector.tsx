@@ -1,13 +1,25 @@
-import { type Component, createSignal, Show, For, createEffect, createRenderEffect, onCleanup, createMemo } from 'solid-js';
+import { type Component, createSignal, Show, For, createEffect, onCleanup, createMemo } from 'solid-js';
 import type { Interaction } from '../types';
 import { parseXmlDocument, type ParsedXmlDocument } from '../utils/xml-parser';
-import { generateLocators } from '../utils/locators';
-import { formatXml } from '../utils/format-xml';
 import { DiffPanel } from './DiffPanel';
 import { JourneyPanel } from './JourneyPanel';
 import { SelectorStability } from './SelectorStability';
-import type { ParsedElement, Locator } from '../types';
+import { compileCandidateMatcher } from '../../../core/selectors/score-candidates';
+import { generateSelectorCandidates } from '../../../core/selectors/generate-candidates';
+import type { SelectorCandidate, SelectorStrategy } from '../../../core/types';
+import type { ParsedElement } from '../types';
 import './MainInspector.css';
+
+const QUERY_STRATEGIES: readonly SelectorStrategy[] = [
+    'accessibility id',
+    'id',
+    'xpath',
+    'class name',
+    '-ios predicate string',
+    '-ios class chain',
+    '-android uiautomator',
+];
+const MAX_INSPECTOR_SOURCE_CHARS = 512 * 1024;
 
 type MainInspectorProps = {
     interaction: Interaction | null;
@@ -15,37 +27,39 @@ type MainInspectorProps = {
     allActions?: Interaction[];
     currentIndex?: number;
     onSelectAction?: (index: number) => void;
+    detailsState?: 'loading' | 'error';
+    previousDetailsState?: 'loading' | 'error';
+    onRetryDetails?: () => void;
 };
 
 export const MainInspector: Component<MainInspectorProps> = (props) => {
     const [selectedElement, setSelectedElement] = createSignal<ParsedElement | null>(null);
-    const [queryStrategy, setQueryStrategy] = createSignal('accessibility id');
+    const [queryStrategy, setQueryStrategy] = createSignal<SelectorStrategy>('accessibility id');
     const [queryValue, setQueryValue] = createSignal('');
     const [foundElements, setFoundElements] = createSignal<ParsedElement[]>([]);
     const [copiedText, setCopiedText] = createSignal<string | null>(null);
     const [queryError, setQueryError] = createSignal<string | null>(null);
-    const [xmlPreRef, setXmlPreRef] = createSignal<HTMLPreElement | undefined>(undefined);
     const [activeTab, setActiveTab] = createSignal<'inspect' | 'diff' | 'journey'>('inspect');
+    let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
-    // Reset state when interaction changes
     createEffect(() => {
         if (props.interaction) {
             setSelectedElement(null);
             setQueryValue('');
             setFoundElements([]);
+            setQueryError(null);
         }
     });
 
-    // Parse the source once per interaction instead of on every query
     const parsedSource = createMemo<ParsedXmlDocument | null>(() => {
-        if (!props.interaction?.source) return null;
+        if (!props.interaction?.source || props.interaction.source.length > MAX_INSPECTOR_SOURCE_CHARS) return null;
         return parseXmlDocument(props.interaction.source);
     });
 
     const parsedElements = () => parsedSource()?.elements ?? [];
 
     const futureActions = createMemo(() => {
-        const all = props.allActions || [];
+        const all = props.allActions ?? [];
         const idx = props.currentIndex ?? -1;
         if (idx < 0 || idx >= all.length) return [];
         return all.slice(idx + 1);
@@ -53,84 +67,37 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
 
     const runQuery = () => {
         const strategy = queryStrategy();
-        const value = queryValue().trim();
+        const value = queryValue();
 
         setQueryError(null);
+        setSelectedElement(null);
+        setFoundElements([]);
 
-        if (!value) return;
+        if (!value.trim()) return;
 
         const elements = parsedElements();
         let found: ParsedElement[] = [];
 
-        switch (strategy) {
-            case 'accessibility id':
-                found = elements.filter(el => el.name === value || el.label === value);
-                break;
-            case 'class name':
-                found = elements.filter(el => el.type === value);
-                break;
-            case 'xpath': {
-                // Evaluate against the already-parsed document so matched nodes
-                // can be compared by identity with the parsed elements' nodes
-                const doc = parsedSource()?.doc;
-                if (doc) {
-                    try {
-                        const result = doc.evaluate(value, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-                        const matchedNodes = new Set<Node>();
-                        for (let i = 0; i < result.snapshotLength; i++) {
-                            const node = result.snapshotItem(i);
-                            if (node && node.nodeType === 1) {
-                                matchedNodes.add(node);
-                            }
-                        }
-                        found = elements.filter(el => matchedNodes.has(el.node));
-                    } catch (e) {
-                        console.error('Invalid XPath expression:', e);
+        if (strategy === 'xpath') {
+            const doc = parsedSource()?.doc;
+            if (doc) {
+                try {
+                    const result = doc.evaluate(value, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                    const matchedNodes = new Set<Node>();
+                    for (let i = 0; i < result.snapshotLength; i++) {
+                        const node = result.snapshotItem(i);
+                        if (node?.nodeType === 1) matchedNodes.add(node);
                     }
+                    found = elements.filter(element => matchedNodes.has(element.node));
+                } catch {
+                    setQueryError(`Invalid XPath: "${value}"`);
+                    return;
                 }
-                break;
             }
-            case '-ios predicate string':
-                found = elements.filter(el => {
-                    const predicateLower = value.toLowerCase();
-                    if (predicateLower.includes('name')) {
-                        const match = value.match(/name\s*(==|CONTAINS)\s*['"](.*)['"]/i);
-                        if (match) {
-                            return match[1] === '==' ? el.name === match[2] : el.name.includes(match[2]);
-                        }
-                    }
-                    if (predicateLower.includes('label')) {
-                        const match = value.match(/label\s*(==|CONTAINS)\s*['"](.*)['"]/i);
-                        if (match) {
-                            return match[1] === '==' ? el.label === match[2] : el.label.includes(match[2]);
-                        }
-                    }
-                    if (predicateLower.includes('type')) {
-                        const match = value.match(/type\s*(==|CONTAINS)\s*['"](.*)['"]/i);
-                        if (match) {
-                            return match[1] === '==' ? el.type === match[2] : el.type.includes(match[2]);
-                        }
-                    }
-                    return false;
-                });
-                break;
-            case '-ios class chain': {
-                const classChainMatch = value.match(/\*\*\/(\w+)(?:\[`(.+?)`\])?/);
-                if (classChainMatch) {
-                    const targetType = classChainMatch[1];
-                    const predicate = classChainMatch[2];
-                    found = elements.filter(el => {
-                        if (el.type !== targetType) return false;
-                        if (!predicate) return true;
-                        const nameMatch = predicate.match(/name\s*==\s*['"](.*)['"]/i);
-                        if (nameMatch) return el.name === nameMatch[1];
-                        const labelMatch = predicate.match(/label\s*==\s*['"](.*)['"]/i);
-                        if (labelMatch) return el.label === labelMatch[1];
-                        return true;
-                    });
-                }
-                break;
-            }
+        } else {
+            const platform = elements.find(element => element.platform !== 'unknown')?.platform ?? 'generic';
+            const matches = compileCandidateMatcher({ strategy, value, platform });
+            found = elements.filter(matches);
         }
 
         setFoundElements(found);
@@ -143,25 +110,23 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
         }
     };
 
-    const copyText = (text: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedText(text);
-        setTimeout(() => setCopiedText(null), 2000);
+    const copyText = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedText(text);
+            if (copiedTimer) clearTimeout(copiedTimer);
+            copiedTimer = setTimeout(() => setCopiedText(null), 2000);
+        } catch {
+            setCopiedText(null);
+        }
     };
-
-    const locators = createMemo<Locator[]>(() => {
-        const el = selectedElement();
-        return el ? generateLocators(el) : [];
+    onCleanup(() => {
+        if (copiedTimer) clearTimeout(copiedTimer);
     });
 
-    // Format once per interaction, not on every tab switch
-    const formattedXml = createMemo(() => formatXml(props.interaction?.source || ''));
-
-    // Defense-in-depth: render XML as textContent (never HTML)
-    createRenderEffect(() => {
-        const el = xmlPreRef();
-        if (!el) return;
-        el.textContent = formattedXml();
+    const locators = createMemo<SelectorCandidate[]>(() => {
+        const el = selectedElement();
+        return el ? generateSelectorCandidates(el) : [];
     });
 
     return (
@@ -177,7 +142,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     </div>
                 }
             >
-                {/* Tab Bar */}
                 <div class="inspector-tabs">
                     <button
                         class="inspector-tab"
@@ -202,28 +166,44 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                     </button>
                 </div>
 
-                {/* Inspect Tab */}
                 <Show when={activeTab() === 'inspect'}>
-                    {/* Query Tester Section */}
+                    <Show when={props.interaction!.detailsTruncated}>
+                        <div class="capture-unavailable">
+                            <Show
+                                when={props.detailsState !== 'error'}
+                                fallback={(
+                                    <>
+                                        Interaction details unavailable.
+                                        <button type="button" onClick={props.onRetryDetails}>Retry</button>
+                                    </>
+                                )}
+                            >
+                                Loading interaction details…
+                            </Show>
+                        </div>
+                    </Show>
                     <div class="query-section">
                         <h3 class="section-title">Query Tester</h3>
                         <div class="query-row">
                             <select
                                 value={queryStrategy()}
-                                onChange={(e) => setQueryStrategy(e.currentTarget.value)}
+                                onChange={(event) => {
+                                    const strategy = QUERY_STRATEGIES.find(
+                                        candidate => candidate === event.currentTarget.value,
+                                    );
+                                    if (strategy) setQueryStrategy(strategy);
+                                }}
                                 class="query-select"
                             >
-                                <option value="accessibility id">accessibility id</option>
-                                <option value="xpath">xpath</option>
-                                <option value="class name">class name</option>
-                                <option value="-ios predicate string">-ios predicate string</option>
-                                <option value="-ios class chain">-ios class chain</option>
+                                <For each={QUERY_STRATEGIES}>
+                                    {(strategy) => <option value={strategy}>{strategy}</option>}
+                                </For>
                             </select>
                             <input
                                 type="text"
                                 value={queryValue()}
                                 onInput={(e) => setQueryValue(e.currentTarget.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && runQuery()}
+                                onKeyDown={(e) => e.key === 'Enter' && runQuery()}
                                 placeholder="Enter locator value..."
                                 class="query-input"
                             />
@@ -246,7 +226,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                             </div>
                         </Show>
 
-                        {/* Element Details */}
                         <Show when={selectedElement()}>
                             <div class="element-panel">
                                 <div class="element-details">
@@ -295,7 +274,6 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                                         </For>
                                     </div>
 
-                                    {/* Selector Stability */}
                                     <SelectorStability
                                         selectedElement={selectedElement()}
                                         locators={locators()}
@@ -306,11 +284,16 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                         </Show>
                     </div>
 
-                    {/* Content Area: Screenshot Left, XML Right */}
                     <div class="content-area">
-                        {/* Screenshot Section */}
                         <div class="screenshot-section">
-                            <Show when={props.interaction!.screenshotUrl}>
+                            <Show
+                                when={props.interaction!.screenshotUrl}
+                                fallback={
+                                    <div class="capture-unavailable">
+                                        Screenshot {props.interaction!.captureStatus === 'pending' ? 'pending' : 'unavailable'}
+                                    </div>
+                                }
+                            >
                                 <img
                                     src={props.interaction!.screenshotUrl}
                                     alt="Screenshot"
@@ -319,24 +302,39 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
                             </Show>
                         </div>
 
-	                    {/* XML Source Section */}
-	                    <div class="xml-section">
-	                        <h3 class="section-title">XML Source</h3>
-	                        <pre
-	                            ref={(el) => {
-	                                setXmlPreRef(el);
-	                                onCleanup(() => {
-	                                    setXmlPreRef(undefined);
-	                                });
-	                            }}
-	                            class="xml-source"
-	                        />
-	                    </div>
-	                </div>
+                        <div class="xml-section">
+                            <h3 class="section-title">XML Source</h3>
+                            <Show
+                                when={!props.interaction!.detailsTruncated}
+                                fallback={<div class="capture-unavailable">Interaction details are required to view XML.</div>}
+                            >
+                                <Show
+                                    when={(props.interaction!.source?.length ?? 0) <= MAX_INSPECTOR_SOURCE_CHARS}
+                                    fallback={<div class="capture-unavailable">XML source is too large to display or inspect.</div>}
+                                >
+                                    <pre class="xml-source">{props.interaction!.source ?? ''}</pre>
+                                </Show>
+                            </Show>
+                        </div>
+                    </div>
                 </Show>
 
-                {/* Diff Tab */}
                 <Show when={activeTab() === 'diff'}>
+                    <Show when={props.previousInteraction?.detailsTruncated}>
+                        <div class="capture-unavailable">
+                            <Show
+                                when={props.previousDetailsState !== 'error'}
+                                fallback={(
+                                    <>
+                                        Previous interaction details unavailable.
+                                        <button type="button" onClick={props.onRetryDetails}>Retry</button>
+                                    </>
+                                )}
+                            >
+                                Loading previous interaction details…
+                            </Show>
+                        </div>
+                    </Show>
                     <DiffPanel
                         current={props.interaction!}
                         previous={props.previousInteraction}
@@ -345,12 +343,12 @@ export const MainInspector: Component<MainInspectorProps> = (props) => {
 
                 <Show when={activeTab() === 'journey'}>
                     <JourneyPanel
-                        actions={props.allActions || []}
+                        actions={props.allActions ?? []}
                         currentIndex={props.currentIndex ?? 0}
                         onSelectAction={props.onSelectAction}
                     />
                 </Show>
-	        </Show>
-	    </div>
+            </Show>
+        </div>
     );
 };
