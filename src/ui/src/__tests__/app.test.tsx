@@ -149,6 +149,31 @@ describe('viewer integration', () => {
         expect(container.textContent).toContain('Found 1 element(s)');
     });
 
+    it('queries and evaluates stability for HTML identifiers', () => {
+        const html = '<!doctype html><html><body><button id=save>Save</button></body></html>';
+        const current = action(1, html);
+        dispose = render(() => (
+            <MainInspector
+                interaction={current}
+                allActions={[current, action(2, html)]}
+                currentIndex={0}
+            />
+        ), container);
+        const strategy = container.querySelector<HTMLSelectElement>('.query-select');
+        const input = container.querySelector<HTMLInputElement>('.query-input');
+        if (!strategy || !input) throw new Error('Missing query controls');
+
+        strategy.value = 'id';
+        strategy.dispatchEvent(new Event('change', { bubbles: true }));
+        input.value = 'save';
+        input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        button(container, 'Find').click();
+
+        expect(container.textContent).toContain('Found 1 element(s)');
+        expect(container.textContent).toContain('Selector Stability');
+        expect(container.textContent).toContain('1/1');
+    });
+
     it('hydrates retained future snapshots before stability analysis', async () => {
         const summaries = Array.from({ length: 5 }, (_, index) => ({
             ...action(index + 1),
@@ -186,6 +211,206 @@ describe('viewer integration', () => {
             '/_recorder/api/interaction/2',
             '/_recorder/api/interaction/3',
         ]));
+    });
+
+    it('hydrates future details sequentially', async () => {
+        let resolveFirst: (response: Response) => void = () => undefined;
+        const firstResponse = new Promise<Response>(resolve => { resolveFirst = resolve; });
+        const fetchMock = vi.fn<typeof fetch>()
+            .mockReturnValueOnce(firstResponse)
+            .mockResolvedValueOnce(new Response(JSON.stringify(action(4))));
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+
+        stream.emit({ type: 'init', data: [action(1), action(2)] });
+        button(container, '← Previous').click();
+        for (const id of [3, 4]) {
+            stream.emit({
+                type: 'interaction',
+                data: {
+                    ...action(id), source: undefined, detailsTruncated: true,
+                    detailsUrl: `/_recorder/api/interaction/${id}`,
+                },
+            });
+        }
+
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        expect(fetchMock).toHaveBeenLastCalledWith('/_recorder/api/interaction/3', expect.anything());
+        resolveFirst(new Response(JSON.stringify(action(3))));
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        expect(fetchMock).toHaveBeenLastCalledWith('/_recorder/api/interaction/4', expect.anything());
+    });
+
+    it('does not hydrate beyond the future stability budget', async () => {
+        const fetchMock = vi.fn<typeof fetch>();
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+        const oversized = `<root>${'x'.repeat(512 * 1024)}</root>`;
+
+        stream.emit({ type: 'init', data: [action(1), action(2, oversized)] });
+        button(container, '← Previous').click();
+        stream.emit({
+            type: 'interaction',
+            data: {
+                ...action(3), source: undefined, detailsTruncated: true,
+                detailsUrl: '/_recorder/api/interaction/3',
+            },
+        });
+        await vi.waitFor(() => expect(container.textContent).toContain('Action 1 of 3'));
+
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('retries hydration when a newer truncated stream summary wins the race', async () => {
+        let resolveFirst: (response: Response) => void = () => undefined;
+        const firstResponse = new Promise<Response>(resolve => { resolveFirst = resolve; });
+        const fetchMock = vi.fn<typeof fetch>()
+            .mockReturnValueOnce(firstResponse)
+            .mockResolvedValueOnce(new Response(JSON.stringify(action(1, '<root>fresh</root>'))));
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+        const summary = {
+            ...action(1), source: undefined, detailsTruncated: true,
+            detailsUrl: '/_recorder/api/interaction/1',
+        };
+
+        stream.emit({ type: 'init', data: [summary] });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        stream.emit({ type: 'interaction', data: { ...summary, path: '/newer-summary' } });
+        resolveFirst(new Response(JSON.stringify(action(1, '<root>stale</root>'))));
+
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(container.querySelector('.xml-source')?.textContent).toBe('<root>fresh</root>'));
+        expect(container.textContent).not.toContain('<root>stale</root>');
+    });
+
+    it('aborts stalled hydration when a newer truncated summary arrives', async () => {
+        let firstSignal: AbortSignal | undefined;
+        const fetchMock = vi.fn<typeof fetch>()
+            .mockImplementationOnce((_input, init) => {
+                const signal = init?.signal;
+                if (!(signal instanceof AbortSignal)) throw new Error('Expected an abort signal');
+                firstSignal = signal;
+                return new Promise((_resolve, reject) => {
+                    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+                });
+            })
+            .mockResolvedValueOnce(new Response(JSON.stringify(action(1, '<root>fresh</root>'))));
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+        const summary = {
+            ...action(1), source: undefined, detailsTruncated: true,
+            detailsUrl: '/_recorder/api/interaction/1',
+        };
+
+        stream.emit({ type: 'init', data: [summary] });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        stream.emit({ type: 'interaction', data: { ...summary, path: '/newer-summary' } });
+
+        await vi.waitFor(() => expect(firstSignal?.aborted).toBe(true));
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(container.querySelector('.xml-source')?.textContent).toBe('<root>fresh</root>'));
+    });
+
+    it('ignores a stale hydration failure after full stream details arrive', async () => {
+        let rejectFetch: (error: Error) => void = () => undefined;
+        const pending = new Promise<Response>((_resolve, reject) => { rejectFetch = reject; });
+        const fetchMock = vi.fn<typeof fetch>().mockReturnValue(pending);
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+        const summary = {
+            ...action(1), source: undefined, detailsTruncated: true,
+            detailsUrl: '/_recorder/api/interaction/1',
+        };
+
+        stream.emit({ type: 'init', data: [summary] });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        stream.emit({ type: 'interaction', data: action(1, '<root>stream details</root>') });
+        rejectFetch(new Error('stale request failed'));
+
+        await vi.waitFor(() => expect(container.querySelector('.xml-source')?.textContent).toBe('<root>stream details</root>'));
+        expect(container.textContent).not.toContain('Interaction details unavailable.');
+    });
+
+    it('retries a stale hydration failure for a newer truncated summary', async () => {
+        let rejectFirst: (error: Error) => void = () => undefined;
+        const first = new Promise<Response>((_resolve, reject) => { rejectFirst = reject; });
+        const fetchMock = vi.fn<typeof fetch>()
+            .mockReturnValueOnce(first)
+            .mockResolvedValueOnce(new Response(JSON.stringify(action(1, '<root>retry success</root>'))));
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+        const summary = {
+            ...action(1), source: undefined, detailsTruncated: true,
+            detailsUrl: '/_recorder/api/interaction/1',
+        };
+
+        stream.emit({ type: 'init', data: [summary] });
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        stream.emit({ type: 'interaction', data: { ...summary, path: '/newer-summary' } });
+        rejectFirst(new Error('stale request failed'));
+
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(container.querySelector('.xml-source')?.textContent).toBe('<root>retry success</root>'));
+        expect(container.textContent).not.toContain('Interaction details unavailable.');
+    });
+
+    it('reports a truncated summary without a detail URL without retrying', async () => {
+        const fetchMock = vi.fn<typeof fetch>();
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+
+        stream.emit({
+            type: 'init',
+            data: [{ ...action(1), source: undefined, detailsTruncated: true, detailsUrl: undefined }],
+        });
+
+        await vi.waitFor(() => expect(container.textContent).toContain('Interaction details unavailable.'));
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not let skipped captures consume future hydration slots', async () => {
+        const skipped = Array.from({ length: 10 }, (_, index) => ({
+            ...action(index + 2), source: undefined, detailsTruncated: false,
+        }));
+        const future = {
+            ...action(12), source: undefined, detailsTruncated: true,
+            detailsUrl: '/_recorder/api/interaction/12',
+        };
+        const trailing = Array.from({ length: 8 }, (_, index) => action(index + 13));
+        const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+            new Response(JSON.stringify(action(12, '<root>hydrated future</root>'))),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        dispose = render(() => <App />, container);
+        const stream = FakeEventSource.instance;
+        if (!stream) throw new Error('Expected an EventSource instance');
+
+        stream.emit({ type: 'init', data: [action(1), ...skipped, future, ...trailing] });
+        expect(fetchMock).not.toHaveBeenCalled();
+        button(container, 'Journey').click();
+        const firstJourneyStep = container.querySelector<HTMLButtonElement>('.journey-thumb');
+        if (!firstJourneyStep) throw new Error('Missing journey step');
+        firstJourneyStep.click();
+
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+            '/_recorder/api/interaction/12',
+            expect.objectContaining({ credentials: 'same-origin' }),
+        ));
     });
 
     it('bounds selector stability work across maximum-size future screens', () => {

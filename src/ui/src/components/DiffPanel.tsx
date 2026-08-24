@@ -145,11 +145,11 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
             </Show>
 
             <Show when={diffUnavailable()}>
-                <div class="diff-empty">XML diff unavailable because a source is missing, invalid, or too large.</div>
+                <div class="diff-empty">Page source diff unavailable because a source is missing, invalid, or too large.</div>
             </Show>
 
             <Show when={props.previous && diffSummary() && !hasChanges()}>
-                <div class="diff-empty">No XML changes between steps.</div>
+                <div class="diff-empty">No page source changes between steps.</div>
             </Show>
 
             <Show when={props.previous && hasChanges()}>
@@ -161,22 +161,22 @@ export const DiffPanel: Component<DiffPanelProps> = (props) => {
                                 class="diff-copy-btn"
                                 onClick={() => void copyXml('previous')}
                             >
-                                {copiedSide() === 'previous' ? 'Copied Previous XML' : 'Copy Previous XML'}
+                                {copiedSide() === 'previous' ? 'Copied Previous Source' : 'Copy Previous Source'}
                             </button>
                             <button
                                 type="button"
                                 class="diff-copy-btn"
                                 onClick={() => void copyXml('current')}
                             >
-                                {copiedSide() === 'current' ? 'Copied Current XML' : 'Copy Current XML'}
+                                {copiedSide() === 'current' ? 'Copied Current Source' : 'Copy Current Source'}
                             </button>
                         </div>
                     </div>
                     <div class="diff-source-head">
                         <span>Prev</span>
-                        <span>Previous XML</span>
+                        <span>Previous Source</span>
                         <span>Curr</span>
-                        <span>Current XML</span>
+                        <span>Current Source</span>
                     </div>
                     <div class="diff-source-body">
                         <For each={visibleRows()}>

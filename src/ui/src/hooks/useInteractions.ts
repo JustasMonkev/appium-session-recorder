@@ -22,7 +22,11 @@ export function applyHydratedInteraction(
     summary: Interaction,
     details: Interaction,
 ): Interaction[] {
-    return interactions.map(interaction => interaction === summary ? details : interaction);
+    const index = interactions.indexOf(summary);
+    if (index < 0) return interactions;
+    const hydrated = [...interactions];
+    hydrated[index] = details;
+    return hydrated;
 }
 
 export function useInteractions() {
@@ -36,10 +40,16 @@ export function useInteractions() {
         onCleanup(unsubscribe);
     });
 
-    const hydrateInteraction = async (summary: Interaction, signal: AbortSignal): Promise<void> => {
-        if (!summary.detailsTruncated || !summary.detailsUrl) return;
+    const hydrateInteraction = async (summary: Interaction, signal: AbortSignal): Promise<boolean> => {
+        if (!summary.detailsTruncated || !summary.detailsUrl) return false;
         const details = await fetchInteraction(summary.detailsUrl, signal);
-        setInteractions(current => applyHydratedInteraction(current, summary, details));
+        let applied = false;
+        setInteractions(current => {
+            const hydrated = applyHydratedInteraction(current, summary, details);
+            applied = hydrated !== current;
+            return hydrated;
+        });
+        return applied;
     };
 
     return { interactions, hydrateInteraction };

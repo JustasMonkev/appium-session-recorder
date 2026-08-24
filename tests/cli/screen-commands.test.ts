@@ -48,7 +48,7 @@ describe('screen commands', () => {
     });
 
     it('preserves bounded HTML sources for web-context commands', async () => {
-        const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><input disabled></body></html>';
+        const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><button id=save>Save</button><input id=email disabled><div hidden><button id=hidden>Hidden</button></div></body></html>';
         const screenshot = Buffer.from('png').toString('base64');
         vi.spyOn(globalThis, 'fetch').mockImplementation(async input =>
             String(input).endsWith('/source')
@@ -59,11 +59,34 @@ describe('screen commands', () => {
         await expect(runScreenSnapshot([
             '--appium-url', 'http://127.0.0.1:4723',
             '--session-id', 'web-session',
-        ])).resolves.toMatchObject({ result: { source: html, screenshot } });
+        ])).resolves.toMatchObject({
+            result: { source: html, screenshot, platform: 'unknown', metadata: { elementCount: 8 } },
+        });
         await expect(runScreenElements([
             '--appium-url', 'http://127.0.0.1:4723',
             '--session-id', 'web-session',
-        ])).resolves.toMatchObject({ command: 'screen.elements' });
+        ])).resolves.toMatchObject({
+            command: 'screen.elements',
+            result: {
+                total: 8,
+                returned: 8,
+                elements: expect.arrayContaining([
+                    expect.objectContaining({ type: 'button', resourceId: 'save', xpath: '/html[1]/body[1]/button[1]' }),
+                    expect.objectContaining({ type: 'input', resourceId: 'email', enabled: false }),
+                ]),
+            },
+        });
+        await expect(runScreenElements([
+            '--appium-url', 'http://127.0.0.1:4723',
+            '--session-id', 'web-session',
+            '--only-actionable',
+        ])).resolves.toMatchObject({
+            result: {
+                total: 8,
+                returned: 1,
+                elements: [expect.objectContaining({ resourceId: 'save', clickable: true })],
+            },
+        });
     });
 
     it('filters actionable elements before applying the result limit', async () => {

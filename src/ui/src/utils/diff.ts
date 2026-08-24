@@ -1,5 +1,5 @@
 import fastDiff from 'fast-diff';
-import { analyzeXml, type XmlAnalysis } from '../../../core/xml/xml-limits';
+import { analyzePageSource, type PageSourceAnalysis } from '../../../core/xml/xml-limits';
 import type { DiffLine, DiffRow, DiffSummary } from '../types';
 import { formatXml } from './format-xml';
 
@@ -11,10 +11,12 @@ const DIFF_TYPE_MAP: Record<number, DiffLine['type']> = {
 const MAX_DIFF_LINES = 2_000;
 const MAX_FORMATTED_DIFF_CHARS = 2 * 1024 * 1024;
 
-function formatXmlLines(xml: string, analysis: XmlAnalysis): string[] | undefined {
-    const formatted = formatXml(xml, analysis);
+function formatSourceLines(source: string, analysis: PageSourceAnalysis): string[] | undefined {
+    const formatted = analysis.format === 'xml'
+        ? formatXml(source, analysis)
+        : source.endsWith('\n') ? source : `${source}\n`;
     if (!formatted || formatted.length > MAX_FORMATTED_DIFF_CHARS) return undefined;
-    const lines = formatted.trimEnd().split('\n');
+    const lines = formatted.slice(0, -1).split('\n');
     return lines.length <= MAX_DIFF_LINES ? lines : undefined;
 }
 
@@ -41,13 +43,13 @@ function buildEncodedLineDiff(prevLines: string[], currLines: string[]) {
 }
 
 function buildDiffLines(
-    prevXml: string,
-    currXml: string,
-    prevAnalysis: XmlAnalysis,
-    currAnalysis: XmlAnalysis,
+    previous: string,
+    current: string,
+    prevAnalysis: PageSourceAnalysis,
+    currAnalysis: PageSourceAnalysis,
 ): DiffLine[] | undefined {
-    const prevLines = formatXmlLines(prevXml, prevAnalysis);
-    const currLines = formatXmlLines(currXml, currAnalysis);
+    const prevLines = formatSourceLines(previous, prevAnalysis);
+    const currLines = formatSourceLines(current, currAnalysis);
     if (!prevLines || !currLines || prevLines.length + currLines.length > MAX_DIFF_LINES) return undefined;
     const { diff, tokenToLine } = buildEncodedLineDiff(prevLines, currLines);
 
@@ -137,8 +139,9 @@ function buildDiffRows(lines: DiffLine[]): DiffRow[] {
 
 export function computeDiffSummary(prevXml: string | undefined, currXml: string | undefined): DiffSummary | null {
     if (!prevXml || !currXml) return null;
-    const prevAnalysis = analyzeXml(prevXml);
-    const currAnalysis = analyzeXml(currXml);
+    if (prevXml.length > MAX_FORMATTED_DIFF_CHARS || currXml.length > MAX_FORMATTED_DIFF_CHARS) return null;
+    const prevAnalysis = analyzePageSource(prevXml);
+    const currAnalysis = analyzePageSource(currXml);
     if (!prevAnalysis || !currAnalysis) return null;
 
     const lines = buildDiffLines(prevXml, currXml, prevAnalysis, currAnalysis);

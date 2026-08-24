@@ -2,6 +2,95 @@ import { describe, it, expect } from 'vitest';
 import { parseSource } from '../../src/core/xml/parse-source';
 
 describe('parseSource', () => {
+    it('parses browser HTML with native recovery and web semantics', () => {
+        const parsed = parseSource(`
+            <!doctype html><html><head><meta charset=utf-8></head><body>
+                <ul><li id=first>First<li id=second>Second</ul>
+                <input id=secret type=hidden><input id=email disabled>
+                <button id=save class="android.widget.Button">Save</button>
+            </body></html>
+        `);
+
+        expect(parsed.platform).toBe('unknown');
+        expect(parsed.elements.map(element => element.type)).toEqual([
+            'html', 'head', 'meta', 'body', 'ul', 'li', 'li', 'input', 'input', 'button',
+        ]);
+        expect(parsed.elements.filter(element => element.type === 'li').map(element => element.xpath)).toEqual([
+            '/html[1]/body[1]/ul[1]/li[1]',
+            '/html[1]/body[1]/ul[1]/li[2]',
+        ]);
+        expect(parsed.elements.find(element => element.resourceId === 'secret')).toMatchObject({
+            type: 'input', visible: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'email')).toMatchObject({
+            type: 'input', enabled: false, clickable: false, attributes: { disabled: '' },
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'save')).toMatchObject({
+            type: 'button', platform: 'unknown', enabled: true, clickable: true,
+        });
+    });
+
+    it('does not expose markup-looking raw text or template content as live elements', () => {
+        const parsed = parseSource(`
+            <html><head><style>.x::before { content: "<fake id=style>" }</style></head><body>
+                <script>if (a < b) value = "<fake id=script>";</script>
+                <template><button id=template-only>Hidden</button></template>
+                <button id=real>Real</button>
+            </body></html>
+        `);
+
+        expect(parsed.elements.map(element => element.resourceId).filter(Boolean)).toEqual(['real']);
+        expect(parsed.elements.map(element => element.type)).toContain('script');
+        expect(parsed.elements.map(element => element.type)).toContain('style');
+        expect(parsed.elements.map(element => element.type)).toContain('template');
+    });
+
+    it('encodes quote, colon, and Unicode HTML names as safe XPath segments', () => {
+        const elements = parseSource(
+            '<html><body><x"y id=quoted></x"y><x:y id=colon></x:y><math-α id=unicode></math-α></body></html>',
+        ).elements;
+        const path = (id: string) => elements.find(element => element.resourceId === id)?.xpath;
+
+        expect(path('quoted')).toBe('/html[1]/body[1]/*[local-name(.)=concat("x",\'"\',"y")][1]');
+        expect(path('colon')).toBe('/html[1]/body[1]/*[local-name(.)="x:y"][1]');
+        expect(path('unicode')).toBe('/html[1]/body[1]/*[local-name(.)="math-α"][1]');
+    });
+
+    it('inherits hidden, disabled, and inert HTML state', () => {
+        const elements = parseSource(`
+            <html><body>
+                <div hidden><button id=hidden-child>Hidden</button></div>
+                <fieldset disabled>
+                    <legend><input id=legend-child></legend>
+                    <legend><input id=second-legend-child></legend>
+                    <a id=link href=/ disabled>Link</a>
+                    <input id=disabled-child>
+                </fieldset>
+                <select disabled><option id=select-option>Disabled</option></select>
+                <select><optgroup disabled><option id=group-option>Disabled</option></optgroup></select>
+                <div inert><button id=inert-child>Inert</button></div>
+                <button id=hidden-false hidden=false>Hidden</button>
+                <button id=inert-false inert=false>Inert</button>
+                <input id=disabled-false disabled=false>
+                <input id=form-feed\fdisabled>
+            </body></html>
+        `).elements;
+        const byId = (id: string) => elements.find(element => element.resourceId === id);
+
+        expect(byId('hidden-child')).toMatchObject({ visible: false, clickable: false });
+        expect(byId('legend-child')).toMatchObject({ enabled: true, clickable: true });
+        expect(byId('second-legend-child')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('link')).toMatchObject({ enabled: true, clickable: true });
+        expect(byId('disabled-child')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('select-option')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('group-option')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('inert-child')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('hidden-false')).toMatchObject({ visible: false, clickable: false });
+        expect(byId('inert-false')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('disabled-false')).toMatchObject({ enabled: false, clickable: false });
+        expect(byId('form-feed')).toMatchObject({ enabled: false, clickable: false });
+    });
+
     it('parses iOS source with normalized metadata', () => {
         const xml = `
             <AppiumAUT type="XCUIElementTypeApplication" name="MyApp" enabled="true" visible="true">

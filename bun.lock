@@ -9,6 +9,7 @@
         "express": "^5.2.1",
         "fast-xml-parser": "^5.11.0",
         "http-proxy-middleware": "^4.2.0",
+        "parse5": "^8.0.1",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",

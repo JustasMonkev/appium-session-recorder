@@ -1,23 +1,103 @@
 import { describe, expect, it } from 'vitest';
 import {
+    inspectPageSource,
     isSourceWithinLimits,
     isXmlWithinLimits,
     MAX_XML_ATTRIBUTES,
     MAX_XML_CHARS,
+    MAX_XML_ELEMENTS,
     MAX_XML_MARKUP_CHARS,
     MAX_XML_TOKENS,
 } from '../../src/core/xml/xml-limits';
 
 describe('XML resource limits', () => {
     it('accepts bounded HTML page sources without weakening malformed XML rejection', () => {
-        expect(isSourceWithinLimits(
-            '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><input disabled></body></html>',
-        )).toBe(true);
+        const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><input disabled></body></html>';
+        expect(inspectPageSource(html)).toEqual({ format: 'html', elementCount: 5 });
         expect(isSourceWithinLimits('<html><body>web context</body></html>')).toBe(true);
+        expect(isSourceWithinLimits('\uFEFF<!--before--><!doctype html><html><body>1 < 2</body></html>')).toBe(true);
+        expect(isSourceWithinLimits('<!doctype html><!--after--><html></html>')).toBe(true);
+        expect(isSourceWithinLimits('<html><body><input\fdisabled></body></html>')).toBe(true);
+        expect(inspectPageSource(`${'<!--x-->'.repeat(1_000)}<root/>`)?.format).toBe('xml');
+        expect(inspectPageSource(
+            '<html><body><template><button id=x></button></template><button id=y></button></body></html>',
+        )?.elementCount).toBe(5);
         expect(isSourceWithinLimits('<a></b>')).toBe(false);
         expect(isSourceWithinLimits('<html>\0</html>')).toBe(false);
         expect(isSourceWithinLimits(`<html>${'x'.repeat(MAX_XML_CHARS)}</html>`)).toBe(false);
     });
+
+    it('scans long non-HTML comment prefixes in linear time', () => {
+        expect(inspectPageSource(`${'<!--x-->'.repeat(100_000)}<root/>`)).toBeUndefined();
+    }, 2_000);
+
+    it('bounds parsed HTML elements and boolean attributes', () => {
+        const elements = (count: number) => (
+            `<html><head></head><body>${'<i></i>'.repeat(count - 3)}</body></html>`
+        );
+        const attributes = (count: number) => {
+            const nodes: string[] = [];
+            for (let offset = 0; offset < count; offset += 20) {
+                const values = Array.from(
+                    { length: Math.min(20, count - offset) },
+                    (_, index) => ` a${index}`,
+                ).join('');
+                nodes.push(`<i${values}></i>`);
+            }
+            return `<html><head></head><body>${nodes.join('')}</body></html>`;
+        };
+
+        expect(inspectPageSource(elements(MAX_XML_ELEMENTS))?.elementCount).toBe(MAX_XML_ELEMENTS);
+        expect(inspectPageSource(elements(MAX_XML_ELEMENTS + 1))).toBeUndefined();
+        expect(isSourceWithinLimits(attributes(MAX_XML_ATTRIBUTES))).toBe(true);
+        expect(isSourceWithinLimits(attributes(MAX_XML_ATTRIBUTES + 1))).toBe(false);
+    }, 5_000);
+
+    it('rejects HTML resource-limit evasions without throwing', () => {
+        const hiddenNodes = '<i></i>'.repeat(MAX_XML_ELEMENTS + 1);
+        const sources = [
+            `<html><body><script><fake a="blah</script>${hiddenNodes}<x a=">z</x></body></html>`,
+            `<html><body><div " >${hiddenNodes}<x " >z</x></div></body></html>`,
+            `<html><!--x--!><body>${hiddenNodes}</body><!--later--></html>`,
+            `<html><!foo " ><body>${hiddenNodes}<x " ></x></body></html>`,
+            `<html><?foo " ><body>${hiddenNodes}<x " ></x></body></html>`,
+            `<html><body><noscript>${hiddenNodes}</noscript></body></html>`,
+        ];
+
+        for (const source of sources) {
+            expect(() => inspectPageSource(source)).not.toThrow();
+            expect(inspectPageSource(source)).toBeUndefined();
+        }
+    }, 5_000);
+
+    it('rejects oversized HTML markup and internal-subset doctypes', () => {
+        const attributes = (count: number) => Array.from({ length: count }, (_, index) => ` a${index}`).join('');
+        expect(isSourceWithinLimits(`<html${attributes(1_024)}></html>`)).toBe(true);
+        expect(isSourceWithinLimits(`<html${attributes(1_025)}></html>`)).toBe(false);
+        expect(isSourceWithinLimits(`<html${' a'.repeat(1_025)}></html>`)).toBe(false);
+        expect(isSourceWithinLimits(`<html><body>${`<i${' a'.repeat(33)}></i>`.repeat(970)}</body></html>`)).toBe(false);
+        expect(isSourceWithinLimits(`<html ${'x'.repeat(MAX_XML_MARKUP_CHARS)}></html>`)).toBe(false);
+        expect(isSourceWithinLimits('<!doctype html [x]><html></html>')).toBe(false);
+    });
+
+    it('accepts HTML names that require escaped XPath segments', () => {
+        for (const source of [
+            '<html><body><x"y></x"y></body></html>',
+            '<html><body><x:y></x:y></body></html>',
+            '<html><body><math-α></math-α></body></html>',
+            '<html><body><emotion-😍></emotion-😍></body></html>',
+        ]) expect(inspectPageSource(source)?.format).toBe('html');
+    });
+
+    it('rejects HTML whose generated XPath exceeds parser budgets', () => {
+        const tag = 'x'.repeat(513);
+        expect(inspectPageSource(`<html><body><${tag}></${tag}></body></html>`)).toBeUndefined();
+
+        const nested = '<abcdefghij>'.repeat(92);
+        const close = '</abcdefghij>'.repeat(92);
+        const leaves = '<abcdefghij></abcdefghij>'.repeat(9_905);
+        expect(inspectPageSource(`<html><body>${nested}${leaves}${close}</body></html>`)).toBeUndefined();
+    }, 2_000);
 
     it('accepts Appium XML with quoted delimiters, comments, and CDATA', () => {
         expect(isXmlWithinLimits(

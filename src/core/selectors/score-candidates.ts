@@ -1,4 +1,5 @@
 import type { ParsedElement, RankedSelector, SelectorCandidate, SelectorReason, SelectorStrategy } from '../types';
+import { htmlClassTokens } from '../xml/normalize-element';
 
 const baseScoreByStrategy: Record<SelectorStrategy, number> = {
     id: 100,
@@ -121,6 +122,10 @@ function compileSimpleXPath(xpath: string): ElementMatcher {
     };
 }
 
+function isHtmlElement(element: ParsedElement): boolean {
+    return element.platform === 'unknown' && /^\/html\[\d+\](?:\/|$)/.test(element.xpath);
+}
+
 export function compileCandidateMatcher(candidate: SelectorCandidate): ElementMatcher {
     switch (candidate.strategy) {
         case 'id':
@@ -128,15 +133,23 @@ export function compileCandidateMatcher(candidate: SelectorCandidate): ElementMa
                 ? element => element.name === candidate.value
                 : element => element.resourceId === candidate.value;
         case 'accessibility id':
-            return candidate.platform === 'android'
-                ? element => element.contentDesc === candidate.value
-                : element => (
-                element.name === candidate.value ||
-                element.label === candidate.value ||
-                element.contentDesc === candidate.value
+            if (candidate.platform === 'android') return element => element.contentDesc === candidate.value;
+            if (candidate.platform === 'ios') {
+                return element => (
+                    element.name === candidate.value
+                    || element.label === candidate.value
+                    || element.contentDesc === candidate.value
+                );
+            }
+            return element => !isHtmlElement(element) && (
+                element.name === candidate.value
+                || element.label === candidate.value
+                || element.contentDesc === candidate.value
             );
         case 'class name':
-            return element => element.type === candidate.value;
+            return element => isHtmlElement(element)
+                ? htmlClassTokens(element.attributes.class).includes(candidate.value)
+                : element.type === candidate.value;
         case 'xpath':
             return compileSimpleXPath(candidate.value);
         case '-ios predicate string':

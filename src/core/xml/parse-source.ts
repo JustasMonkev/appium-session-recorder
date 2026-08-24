@@ -1,7 +1,8 @@
 import { XMLParser } from 'fast-xml-parser';
+import { parse as parseHtml } from 'parse5';
 import type { ParsedElement, ParsedSource } from '../types';
-import { appendXmlPath, isXmlWithinLimits, MAX_XML_DEPTH, MAX_XML_ELEMENTS } from './xml-limits';
-import { normalizeParsedElement, resolveSourcePlatform } from './normalize-element';
+import { appendXmlPath, htmlXpathSegment, inspectPageSource, MAX_XML_DEPTH, MAX_XML_ELEMENTS } from './xml-limits';
+import { normalizeParsedElement, resolveSourcePlatform, type HtmlElementContext } from './normalize-element';
 
 const parser = new XMLParser({
     ignoreAttributes: false,
@@ -65,7 +66,14 @@ function normalizeXmlAttribute(value: string): string {
     );
 }
 
-function xmlElement(value: unknown) {
+type SourceElement = {
+    tag: string;
+    children: unknown[];
+    attributes: Record<string, string>;
+    namespace?: string;
+};
+
+function xmlElement(value: unknown): SourceElement | undefined {
     const entry = asRecord(value);
     const rawTag = entry && Object.keys(entry).find(key => (
         key !== ':@' && !key.startsWith('#') && !key.startsWith('?') && !key.startsWith('!')
@@ -81,50 +89,116 @@ function xmlElement(value: unknown) {
     return { tag: restoreXmlName(rawTag), children, attributes };
 }
 
-export function parseSource(xmlString: string): ParsedSource {
-    if (!isXmlWithinLimits(xmlString)) {
-        return { platform: 'unknown', elements: [] };
-    }
+function htmlElement(value: unknown): SourceElement | undefined {
+    const entry = asRecord(value);
+    if (!entry || typeof entry.tagName !== 'string' || !Array.isArray(entry.childNodes)) return undefined;
+    const attributes = Object.fromEntries(entry.attrs instanceof Array
+        ? entry.attrs.flatMap((value) => {
+            const attribute = asRecord(value);
+            if (!attribute || typeof attribute.name !== 'string' || typeof attribute.value !== 'string') return [];
+            const name = typeof attribute.prefix === 'string'
+                ? `${attribute.prefix}:${attribute.name}`
+                : attribute.name;
+            return [[name, attribute.value]];
+        })
+        : []);
+    return {
+        tag: entry.tagName,
+        children: entry.childNodes,
+        attributes,
+        namespace: typeof entry.namespaceURI === 'string' ? entry.namespaceURI : undefined,
+    };
+}
 
-    let parsed: unknown;
+type ElementReader = (value: unknown) => SourceElement | undefined;
+
+export function parseSource(source: string): ParsedSource {
+    const inspection = inspectPageSource(source);
+    if (!inspection) return { platform: 'unknown', elements: [] };
+
+    let roots: unknown[];
+    let readElement: ElementReader;
     try {
-        parsed = parser.parse(xmlString);
+        if (inspection.format === 'html') {
+            roots = parseHtml(source, { scriptingEnabled: false }).childNodes;
+            readElement = htmlElement;
+        } else {
+            const parsed = parser.parse(source);
+            if (!Array.isArray(parsed)) return { platform: 'unknown', elements: [] };
+            roots = parsed;
+            readElement = xmlElement;
+        }
     } catch {
         return { platform: 'unknown', elements: [] };
     }
-    if (!Array.isArray(parsed)) return { platform: 'unknown', elements: [] };
 
-    const root = parsed.map(xmlElement).find(element => element !== undefined);
+    const root = roots.map(readElement).find(element => element !== undefined);
     if (!root) return { platform: 'unknown', elements: [] };
 
     const elements: ParsedElement[] = [];
-    const stack = [{ element: root, xpath: '', siblingIndex: 1, depth: 1 }];
+    const htmlContext: HtmlElementContext | undefined = inspection.format === 'html'
+        ? { formDisabled: false, hidden: false, inert: false }
+        : undefined;
+    const stack = [{ element: root, xpath: '', siblingIndex: 1, depth: 1, htmlContext }];
     let generatedPathChars = 0;
 
-    while (stack.length > 0 && elements.length < MAX_XML_ELEMENTS) {
+    while (stack.length > 0) {
+        if (elements.length >= MAX_XML_ELEMENTS) return { platform: 'unknown', elements: [] };
         const entry = stack.pop();
         if (!entry) break;
-        const { element, xpath, siblingIndex, depth } = entry;
+        const { element, xpath, siblingIndex, depth, htmlContext: context } = entry;
         const { tag, attributes } = element;
-        const path = appendXmlPath(xpath, tag, siblingIndex, generatedPathChars);
+        const segment = context ? htmlXpathSegment(tag, element.namespace) : tag;
+        const path = appendXmlPath(xpath, segment, siblingIndex, generatedPathChars);
         if (!path) return { platform: 'unknown', elements: [] };
         const currentXpath = path.path;
         generatedPathChars = path.generatedChars;
-        elements.push(normalizeParsedElement(tag, attributes, currentXpath, elements.length));
+        elements.push(normalizeParsedElement(
+            tag,
+            attributes,
+            currentXpath,
+            elements.length,
+            context,
+        ));
 
-        if (depth >= MAX_XML_DEPTH) continue;
+        if (depth >= MAX_XML_DEPTH) {
+            if (element.children.some(child => readElement(child) !== undefined)) {
+                return { platform: 'unknown', elements: [] };
+            }
+            continue;
+        }
 
         const childCounts = new Map<string, number>();
+        const fieldsetDisabled = context !== undefined
+            && tag === 'fieldset'
+            && attributes.disabled !== undefined;
+        let firstLegendSeen = false;
         const children = element.children.flatMap(child => {
-            const parsedChild = xmlElement(child);
+            const parsedChild = readElement(child);
             if (!parsedChild) return [];
-            const childIndex = (childCounts.get(parsedChild.tag) ?? 0) + 1;
-            childCounts.set(parsedChild.tag, childIndex);
+            const childSegment = context
+                ? htmlXpathSegment(parsedChild.tag, parsedChild.namespace)
+                : parsedChild.tag;
+            const childIndex = (childCounts.get(childSegment) ?? 0) + 1;
+            childCounts.set(childSegment, childIndex);
+            const firstLegend = fieldsetDisabled && parsedChild.tag === 'legend' && !firstLegendSeen;
+            if (firstLegend) firstLegendSeen = true;
+            const childHtmlContext = context && {
+                formDisabled: context.formDisabled
+                    || (fieldsetDisabled && !firstLegend)
+                    || (
+                        (tag === 'select' || tag === 'optgroup')
+                        && attributes.disabled !== undefined
+                    ),
+                hidden: context.hidden || attributes.hidden !== undefined,
+                inert: context.inert || attributes.inert !== undefined,
+            };
             return [{
                 element: parsedChild,
                 xpath: currentXpath,
                 siblingIndex: childIndex,
                 depth: depth + 1,
+                htmlContext: childHtmlContext,
             }];
         });
         stack.push(...children.reverse());

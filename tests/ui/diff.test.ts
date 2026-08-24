@@ -66,6 +66,33 @@ describe('diff rows', () => {
 });
 
 describe('computeDiffSummary', () => {
+    it('diffs bounded HTML page sources', () => {
+        const previous = '<!doctype html><html><body><button id=save>Save</button></body></html>';
+        const current = '<!doctype html><html><body><button id=save>Saved</button><input id=email></body></html>';
+        const result = computeDiffSummary(previous, current);
+
+        expect(result).toMatchObject({
+            prevElementCount: 4,
+            currElementCount: 5,
+            elementCountDelta: 1,
+            insertedLineCount: 1,
+            deletedLineCount: 1,
+            changedLineCount: 2,
+        });
+        expect(reconstruct(result!.rows, 'previous')).toBe(`${previous}\n`);
+        expect(reconstruct(result!.rows, 'current')).toBe(`${current}\n`);
+    });
+
+    it('preserves significant trailing HTML text whitespace', () => {
+        const previous = '<html><body>x ';
+        const current = '<html><body>x';
+        const result = computeDiffSummary(previous, current);
+
+        expect(result?.changedLineCount).toBe(2);
+        expect(reconstruct(result!.rows, 'previous')).toBe(`${previous}\n`);
+        expect(reconstruct(result!.rows, 'current')).toBe(`${current}\n`);
+    });
+
     it('should return null when prevXml is undefined', () => {
         expect(computeDiffSummary(undefined, '<root/>')).toBeNull();
     });

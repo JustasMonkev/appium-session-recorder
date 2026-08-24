@@ -13,28 +13,65 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     return value as Record<string, unknown>;
 }
 
+function optionalType(value: unknown, type: 'string' | 'boolean'): boolean {
+    return value === undefined || typeof value === type;
+}
+
+const ACTION_KINDS: ReadonlySet<unknown> = new Set([
+    'tap', 'type', 'clear', 'back', 'forward', 'refresh', 'swipe', 'find', 'unknown',
+]);
+const CAPTURE_STATUSES: ReadonlySet<unknown> = new Set(['pending', 'complete', 'partial', 'failed', 'skipped']);
+
+function isPositiveInteger(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
 function isInteraction(value: unknown): value is Interaction {
     const interaction = asRecord(value);
     if (!interaction) return false;
-    return Number.isInteger(interaction.id)
+    const elementInfo = interaction.elementInfo === undefined ? undefined : asRecord(interaction.elementInfo);
+    return isPositiveInteger(interaction.id)
         && typeof interaction.timestamp === 'string'
         && typeof interaction.method === 'string'
-        && typeof interaction.path === 'string';
+        && typeof interaction.path === 'string'
+        && optionalType(interaction.screenshotUrl, 'string')
+        && optionalType(interaction.source, 'string')
+        && optionalType(interaction.detailsUrl, 'string')
+        && optionalType(interaction.detailsTruncated, 'boolean')
+        && (
+            interaction.elementInfo === undefined
+            || (
+                elementInfo !== undefined
+                && typeof elementInfo.using === 'string'
+                && typeof elementInfo.value === 'string'
+            )
+        )
+        && (
+            interaction.actionKind === undefined
+            || ACTION_KINDS.has(interaction.actionKind)
+        )
+        && (
+            interaction.captureStatus === undefined
+            || CAPTURE_STATUSES.has(interaction.captureStatus)
+        );
 }
 
 export async function fetchInteraction(url: string, signal?: AbortSignal): Promise<Interaction> {
-    if (!/^\/_recorder\/api\/interaction\/[1-9]\d*$/.test(url)) {
+    const match = url.match(/^\/_recorder\/api\/interaction\/([1-9]\d*)$/);
+    if (!match) {
         throw new Error('Invalid interaction details URL');
     }
     const response = await fetch(url, { signal, credentials: 'same-origin' });
     if (!response.ok) throw new Error(`Interaction details request failed (${response.status})`);
     const interaction: unknown = await response.json();
-    if (!isInteraction(interaction)) throw new Error('Interaction details response was invalid');
+    if (
+        !isInteraction(interaction)
+        || interaction.id !== Number(match[1])
+        || interaction.detailsTruncated === true
+    ) {
+        throw new Error('Interaction details response was invalid');
+    }
     return interaction;
-}
-
-function isInteger(value: unknown): value is number {
-    return Number.isInteger(value);
 }
 
 export function parseStreamEvent(serialized: string): StreamEventParseResult {
@@ -53,7 +90,7 @@ export function parseStreamEvent(serialized: string): StreamEventParseResult {
         if (
             parsed?.type === 'evict'
             && Array.isArray(evict?.ids)
-            && evict.ids.every(isInteger)
+            && evict.ids.every(isPositiveInteger)
         ) {
             return { ok: true, event: { type: 'evict', data: { ids: evict.ids } } };
         }

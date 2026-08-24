@@ -1,4 +1,5 @@
 import type { ParsedElement, Platform, SelectorCandidate } from '../types';
+import { htmlClassTokens } from '../xml/normalize-element';
 
 function pushUnique(candidates: SelectorCandidate[], candidate: SelectorCandidate): void {
     if (!candidate.value) return;
@@ -43,6 +44,9 @@ function actualAttribute(
 }
 
 function xpathNodeConstraint(element: ParsedElement): { node: string; condition?: string } {
+    if (isHtmlElement(element)) {
+        return { node: element.xpath.match(/\/([A-Za-z][\w.-]*)\[\d+\]$/)?.[1] ?? '*' };
+    }
     const typeLiteral = xpathLiteral(element.type);
     if (typeLiteral && element.attributes.type === element.type) {
         return { node: '*', condition: `@type=${typeLiteral}` };
@@ -53,13 +57,18 @@ function xpathNodeConstraint(element: ParsedElement): { node: string; condition?
     return { node: element.xpath.match(/\/([^/[]+)\[\d+\]$/)?.[1] ?? '*' };
 }
 
+function isHtmlElement(element: ParsedElement): boolean {
+    return element.platform === 'unknown' && /^\/html\[\d+\](?:\/|$)/.test(element.xpath);
+}
+
 export function generateSelectorCandidates(element: ParsedElement): SelectorCandidate[] {
     const candidates: SelectorCandidate[] = [];
     const platform: Platform = element.platform;
+    const html = isHtmlElement(element);
 
     const primaryAccessibility = platform === 'android'
         ? element.contentDesc
-        : element.name || element.label || element.contentDesc;
+        : platform === 'ios' || !html ? element.name || element.label || element.contentDesc : '';
     if (primaryAccessibility) {
         pushUnique(candidates, {
             strategy: 'accessibility id',
@@ -99,13 +108,16 @@ export function generateSelectorCandidates(element: ParsedElement): SelectorCand
         }
     }
 
+    if (platform !== 'ios' && element.resourceId) {
+        pushUnique(candidates, {
+            strategy: 'id',
+            value: element.resourceId,
+            platform,
+        });
+    }
+
     if (platform === 'android') {
         if (element.resourceId) {
-            pushUnique(candidates, {
-                strategy: 'id',
-                value: element.resourceId,
-                platform,
-            });
             pushUnique(candidates, {
                 strategy: '-android uiautomator',
                 value: `new UiSelector().resourceId("${escapeDoubleQuoted(element.resourceId)}")`,
@@ -140,8 +152,12 @@ export function generateSelectorCandidates(element: ParsedElement): SelectorCand
             ? actualAttribute(element, ['resource-id', 'resourceId', 'id'], element.resourceId)
                 ?? actualAttribute(element, ['content-desc', 'contentDesc'], element.contentDesc)
                 ?? actualAttribute(element, ['text', 'value', 'label'], element.text || element.label)
-            : actualAttribute(element, ['name'], element.name)
-                ?? actualAttribute(element, ['label'], element.label);
+            : platform === 'ios'
+                ? actualAttribute(element, ['name'], element.name)
+                    ?? actualAttribute(element, ['label'], element.label)
+                : actualAttribute(element, ['id', 'resource-id', 'resourceId'], element.resourceId)
+                    ?? actualAttribute(element, ['name'], element.name)
+                    ?? actualAttribute(element, ['label'], element.label);
         const valueLiteral = xpathLiteral(attribute?.[1] ?? '');
         if (attribute && valueLiteral) {
             const { node, condition } = xpathNodeConstraint(element);
@@ -155,7 +171,8 @@ export function generateSelectorCandidates(element: ParsedElement): SelectorCand
     }
 
     pushUnique(candidates, { strategy: 'xpath', value: element.xpath, platform: 'generic' });
-    pushUnique(candidates, { strategy: 'class name', value: element.type, platform: 'generic' });
+    const className = html ? htmlClassTokens(element.attributes.class)[0] : element.type;
+    if (className) pushUnique(candidates, { strategy: 'class name', value: className, platform: 'generic' });
 
     return candidates;
 }

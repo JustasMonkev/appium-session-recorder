@@ -2,6 +2,8 @@ import type { ParsedElement, SelectorCandidate } from '../types';
 import { compileCandidateMatcher } from './score-candidates';
 
 export const MAX_STABILITY_SNAPSHOTS = 10;
+export const MAX_STABILITY_ELEMENTS = 2_000;
+export const MAX_STABILITY_SOURCE_CHARS = 512 * 1024;
 
 export type StabilityResult = {
     candidate: SelectorCandidate;

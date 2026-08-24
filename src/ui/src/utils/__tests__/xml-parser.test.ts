@@ -1,12 +1,121 @@
 import { describe, it, expect } from 'vitest';
 import { parseXmlDocument, parseXmlSource } from '../xml-parser';
 import { generateSelectorCandidates } from '../../../../core/selectors/generate-candidates';
+import { parseSource } from '../../../../core/xml/parse-source';
 
 function generateLocators(element: Parameters<typeof generateSelectorCandidates>[0]) {
     return generateSelectorCandidates(element).map(({ strategy, value }) => ({ strategy, value }));
 }
 
 describe('parseXmlSource', () => {
+    it('matches the core parser for recovered browser HTML', () => {
+        const html = `<!doctype html><html><head><meta charset=utf-8></head><body>
+            <ul><li id=first title="A&nbsp;B">First<li id=second>Second</ul>
+            <noscript><button id=fallback>Fallback</button></noscript>
+            <svg><circle id=dot></circle></svg>
+            <div hidden><button id=hidden-child>Hidden</button></div>
+            <fieldset disabled><legend><input id=legend-child></legend><legend><input id=second-legend-child></legend><input id=blocked></fieldset>
+            <select disabled><option id=select-option>Disabled</option></select>
+            <select><optgroup disabled><option id=group-option>Disabled</option></optgroup></select>
+            <input id=email disabled><button id=save class=primary>Save</button>
+        </body></html>`;
+        const parsed = parseXmlDocument(html);
+        const core = parseSource(html).elements;
+        const values = (elements: typeof core) => elements.map(({
+            type, xpath, resourceId, attributes, enabled, clickable, visible,
+        }) => ({ type, xpath, resourceId, attributes, enabled, clickable, visible }));
+
+        expect(values(parsed.elements)).toEqual(values(core));
+        expect(parsed.elements.find(element => element.resourceId === 'email')).toMatchObject({
+            type: 'input', enabled: false, clickable: false, attributes: { disabled: '' },
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'hidden-child')).toMatchObject({
+            visible: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'legend-child')).toMatchObject({
+            enabled: true, clickable: true,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'second-legend-child')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'blocked')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'select-option')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        expect(parsed.elements.find(element => element.resourceId === 'group-option')).toMatchObject({
+            enabled: false, clickable: false,
+        });
+        const button = parsed.elements.find(element => element.resourceId === 'save')!;
+        expect(parsed.doc.evaluate(
+            button.xpath,
+            parsed.doc,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+        ).singleNodeValue).toBe(button.node);
+        const circle = parsed.elements.find(element => element.resourceId === 'dot')!;
+        expect(circle.xpath).toBe(
+            '/html[1]/body[1]/*[local-name(.)="svg"][1]/*[local-name(.)="circle"][1]',
+        );
+        expect(parsed.doc.evaluate(
+            circle.xpath,
+            parsed.doc,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+        ).singleNodeValue).toBe(circle.node);
+    });
+
+    it('keeps core and UI HTML behavior aligned across deterministic generated documents', () => {
+        let state = 0x51f15e;
+        const next = () => (state = (state * 1_664_525 + 1_013_904_223) >>> 0);
+
+        for (let caseIndex = 0; caseIndex < 100; caseIndex++) {
+            const children = Array.from({ length: 1 + next() % 20 }, (_, index) => {
+                const id = `item-${caseIndex}-${index}`;
+                if (next() % 3 === 0) return `<input id=${id}${next() % 2 ? ' disabled' : ''}>`;
+                const tag = next() % 2 ? 'button' : 'div';
+                return `<${tag} id=${id} class="c${next() % 5}">&amp;</${tag}>`;
+            }).join('');
+            const html = `<!doctype html><html><body><ul><li id=a>A<li id=b>B</ul>${children}</body></html>`;
+            const core = parseSource(html).elements.map(element => ({
+                type: element.type,
+                xpath: element.xpath,
+                resourceId: element.resourceId,
+                enabled: element.enabled,
+                clickable: element.clickable,
+                attributes: element.attributes,
+            }));
+            const ui = parseXmlSource(html).map(element => ({
+                type: element.type,
+                xpath: element.xpath,
+                resourceId: element.resourceId,
+                enabled: element.enabled,
+                clickable: element.clickable,
+                attributes: element.attributes,
+            }));
+
+            expect(ui).toEqual(core);
+        }
+    });
+
+    it('evaluates XPath locators for escaped HTML element names', () => {
+        const html = '<html><body><x"y id=quoted></x"y><x:y id=colon></x:y><math-α id=unicode></math-α></body></html>';
+        const parsed = parseXmlDocument(html);
+        const core = parseSource(html).elements;
+
+        for (const id of ['quoted', 'colon', 'unicode']) {
+            const element = parsed.elements.find(candidate => candidate.resourceId === id)!;
+            expect(element.xpath).toBe(core.find(candidate => candidate.resourceId === id)?.xpath);
+            expect(parsed.doc.evaluate(
+                element.xpath,
+                parsed.doc,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+            ).singleNodeValue).toBe(element.node);
+        }
+    });
+
     describe('basic parsing', () => {
         it('should parse empty XML', () => {
             const xml = '<root></root>';

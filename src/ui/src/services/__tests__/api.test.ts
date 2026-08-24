@@ -46,6 +46,15 @@ describe('parseStreamEvent', () => {
         '{"type":"clear","data":[]}',
         '{"type":"evict","data":{"ids":[1.5]}}',
         '{"type":"evict","data":{"ids":["1"]}}',
+        JSON.stringify({ type: 'interaction', data: { ...interaction, id: 0 } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, source: 123 } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, screenshotUrl: false } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, detailsUrl: 1 } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, detailsTruncated: 'true' } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, elementInfo: { using: 'id' } } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, actionKind: 'delete' } }),
+        JSON.stringify({ type: 'interaction', data: { ...interaction, captureStatus: 'done' } }),
+        JSON.stringify({ type: 'evict', data: { ids: [0] } }),
     ])('rejects malformed event %s', serialized => {
         expect(parseStreamEvent(serialized)).toEqual({ ok: false });
     });
@@ -124,11 +133,17 @@ describe('fetchInteraction', () => {
         const fetchMock = vi.fn<typeof fetch>()
             .mockResolvedValueOnce(new Response('', { status: 404 }))
             .mockRejectedValueOnce(new Error('offline'))
-            .mockResolvedValueOnce(new Response('{}'));
+            .mockResolvedValueOnce(new Response('{}'))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ ...interaction, id: 2 })))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ ...interaction, detailsTruncated: true })))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ ...interaction, source: 123 })));
         vi.stubGlobal('fetch', fetchMock);
 
         await expect(fetchInteraction('/_recorder/api/interaction/1')).rejects.toThrow('(404)');
         await expect(fetchInteraction('/_recorder/api/interaction/1')).rejects.toThrow('offline');
+        await expect(fetchInteraction('/_recorder/api/interaction/1')).rejects.toThrow('response was invalid');
+        await expect(fetchInteraction('/_recorder/api/interaction/1')).rejects.toThrow('response was invalid');
+        await expect(fetchInteraction('/_recorder/api/interaction/1')).rejects.toThrow('response was invalid');
         await expect(fetchInteraction('/_recorder/api/interaction/1')).rejects.toThrow('response was invalid');
     });
 });

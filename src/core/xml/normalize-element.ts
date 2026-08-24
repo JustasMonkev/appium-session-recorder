@@ -1,5 +1,16 @@
 import type { ParsedElement, Platform } from '../types';
 
+const HTML_ACTIONABLE_ELEMENTS = new Set(['button', 'input', 'select', 'textarea']);
+const HTML_DISABLEABLE_ELEMENTS = new Set([
+    'button', 'fieldset', 'input', 'optgroup', 'option', 'select', 'textarea',
+]);
+
+export type HtmlElementContext = { formDisabled: boolean; hidden: boolean; inert: boolean };
+
+export function htmlClassTokens(value: string | undefined): string[] {
+    return value?.split(/[\t\n\f\r ]+/).filter(Boolean) ?? [];
+}
+
 function booleanValue(value: string | undefined): boolean {
     return value === 'true' || value === '1';
 }
@@ -36,13 +47,26 @@ export function normalizeParsedElement(
     attributes: Record<string, string>,
     xpath: string,
     index: number,
+    htmlContext?: HtmlElementContext,
 ): ParsedElement {
-    const type = attributes.type || attributes.class || tag;
-    const platform = platformFor(type, attributes);
+    const html = htmlContext !== undefined;
+    const type = html ? tag : attributes.type || attributes.class || tag;
+    const platform = html ? 'unknown' : platformFor(type, attributes);
     const bounds = androidBounds(attributes.bounds);
-    const resourceId = attributes['resource-id'] || attributes.resourceId || attributes.id || '';
-    const contentDesc = attributes['content-desc'] || attributes.contentDesc || '';
+    const resourceId = html
+        ? attributes.id || ''
+        : attributes['resource-id'] || attributes.resourceId || attributes.id || '';
+    const contentDesc = html ? '' : attributes['content-desc'] || attributes.contentDesc || '';
     const value = attributes.value || '';
+    const htmlVisible = !htmlContext?.hidden
+        && attributes.hidden === undefined
+        && !(tag === 'input' && attributes.type?.toLowerCase() === 'hidden');
+    const htmlEnabled = !htmlContext?.inert
+        && (
+            !HTML_DISABLEABLE_ELEMENTS.has(tag)
+            || (!htmlContext?.formDisabled && attributes.disabled === undefined)
+        )
+        && attributes.inert === undefined;
     return {
         elementRef: `${platform}:${xpath}`,
         index,
@@ -55,10 +79,16 @@ export function normalizeParsedElement(
         text: attributes.text || value,
         resourceId,
         contentDesc,
-        enabled: booleanValue(attributes.enabled),
-        visible: visibleValue(attributes.visible) && visibleValue(attributes.displayed),
+        enabled: html ? htmlEnabled : booleanValue(attributes.enabled),
+        visible: visibleValue(attributes.visible)
+            && visibleValue(attributes.displayed)
+            && (!html || htmlVisible),
         accessible: booleanValue(attributes.accessible),
-        clickable: booleanValue(attributes.clickable),
+        clickable: html
+            ? htmlVisible && htmlEnabled && (
+                HTML_ACTIONABLE_ELEMENTS.has(tag) || (tag === 'a' && attributes.href !== undefined)
+            )
+            : booleanValue(attributes.clickable),
         x: attributes.x === undefined ? bounds.x : numberValue(attributes.x),
         y: attributes.y === undefined ? bounds.y : numberValue(attributes.y),
         width: attributes.width === undefined ? bounds.width : numberValue(attributes.width),

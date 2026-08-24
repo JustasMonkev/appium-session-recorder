@@ -4,13 +4,12 @@ import type { SelectorCandidate } from '../../../core/types';
 import { getParsedElements } from '../utils/xml-parser';
 import {
     evaluateSelectorStability,
+    MAX_STABILITY_ELEMENTS,
     MAX_STABILITY_SNAPSHOTS,
+    MAX_STABILITY_SOURCE_CHARS,
 } from '../../../core/selectors/selector-stability';
-import { inspectXml } from '../../../core/xml/xml-limits';
+import { inspectPageSource } from '../../../core/xml/xml-limits';
 import './SelectorStability.css';
-
-const MAX_STABILITY_ELEMENTS = 2_000;
-const MAX_STABILITY_SOURCE_CHARS = 512 * 1024;
 
 type SelectorStabilityProps = {
     selectedElement: ParsedElement | null;
@@ -35,7 +34,7 @@ export const SelectorStability: Component<SelectorStabilityProps> = (props) => {
         for (const action of eligible) {
             if (snapshots.length >= MAX_STABILITY_SNAPSHOTS) break;
             if (!action.source || sourceChars + action.source.length > MAX_STABILITY_SOURCE_CHARS) break;
-            const estimatedElements = inspectXml(action.source)?.elementCount ?? MAX_STABILITY_ELEMENTS + 1;
+            const estimatedElements = inspectPageSource(action.source)?.elementCount ?? MAX_STABILITY_ELEMENTS + 1;
             if (elementCount + estimatedElements > MAX_STABILITY_ELEMENTS) break;
             const elements = getParsedElements(action);
             if (elementCount + elements.length > MAX_STABILITY_ELEMENTS) break;

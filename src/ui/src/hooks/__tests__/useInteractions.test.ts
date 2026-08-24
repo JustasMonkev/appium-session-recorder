@@ -45,9 +45,11 @@ describe('applyStreamEvent', () => {
     it('does not let stale detail hydration overwrite a newer stream update', () => {
         const summary = { ...interaction(1), detailsUrl: '/_recorder/api/interaction/1', detailsTruncated: true };
         const newer = interaction(1, '/newer');
+        const newerSummary = { ...summary, path: '/newer-summary' };
         const staleDetails = interaction(1, '/stale-details');
 
         expect(applyHydratedInteraction([newer], summary, staleDetails)).toEqual([newer]);
+        expect(applyHydratedInteraction([newerSummary], summary, staleDetails)).toEqual([newerSummary]);
         expect(applyHydratedInteraction([summary], summary, staleDetails)).toEqual([staleDetails]);
     });
 });
