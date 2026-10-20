@@ -1,0 +1,38 @@
+[package]
+name = "appium-session-recorder"
+version = "0.0.4"
+edition = "2024"
+rust-version = "1.85"
+description = "Local Appium recorder proxy and JSON automation CLI"
+license = "MIT"
+repository = "https://github.com/JustasMonkev/appium-session-recorder"
+default-run = "appium-recorder"
+
+[[bin]]
+name = "appium-recorder"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+futures-util = "0.3"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+html5ever = "0.35"
+quick-xml = "0.38"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "gzip", "brotli", "deflate", "zstd"] }
+scraper = "0.24"
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+url = "2"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+lto = "thin"
+strip = true

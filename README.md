@@ -1,6 +1,6 @@
-# Appium Session Recorder
+# Appium Session Recorder — Rust
 
-A local Appium proxy and JSON-first automation CLI. It records actions, screenshots, and page source; ranks selectors; and streams captured sessions to a Solid.js viewer.
+A local Appium proxy and JSON-first automation CLI. It records actions, screenshots, and page source; ranks selectors; and streams captured sessions to an embedded browser viewer. The proxy, CLI, XML/HTML parser, and selector engine run in Rust; the viewer uses plain HTML, CSS, and JavaScript bundled into the binary.
 
 ## Features
 
@@ -13,20 +13,23 @@ A local Appium proxy and JSON-first automation CLI. It records actions, screensh
 
 ## Requirements
 
-- [Bun](https://bun.sh/) 1.4 or newer
-- A running [Appium](https://appium.io/) server
+- Rust 1.85 or newer to build (verified with Rust 1.85.1 and 1.99.1)
+- A running [Appium](https://appium.io/) server for device commands
 
 ## Install
 
 ```bash
-bun add --global appium-session-recorder
+cargo install --path . --locked
 ```
 
-The package can also be installed with npm when Bun is already available on `PATH`:
+Or build the standalone binary:
 
 ```bash
-npm install --global appium-session-recorder
+cargo build --release --locked
+./target/release/appium-recorder --help
 ```
+
+No Bun, Node.js, or frontend build is required. The binary embeds the viewer assets.
 
 ## Start recording
 
@@ -153,30 +156,48 @@ The configured Appium server may be remote, but its URL must use HTTP(S) and mus
 ## Development
 
 ```bash
-git clone https://github.com/JustasMonkev/appium-session-recorder.git
-cd appium-session-recorder
-bun install
-
-# Terminal 1: recorder API/proxy
-bun run dev -- --port 4724 --appium-url http://127.0.0.1:4723
-
-# Terminal 2: viewer with API proxying
-bun run dev:ui
+cargo run -- --port 4724 --appium-url http://127.0.0.1:4723
 ```
 
-Open `http://127.0.0.1:3000/_recorder/` while both processes run.
+Open `http://127.0.0.1:4724/_recorder` to view captured actions. Without flags,
+interactive terminals prompt for connection settings; noninteractive invocations
+use environment variables and defaults. `proxy start` always uses its explicit
+flags and defaults and writes a JSON startup response after binding succeeds.
 
 Verification:
 
 ```bash
-bun run lint
-bun run typecheck
-bun run test
-bun run test:coverage
-bun run build
+cargo fmt --all -- --check
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+cargo build --release --locked
 ```
 
-The build bundles the CLI for Bun and writes the viewer to `dist/ui`.
+On Unix, `python3 tests/legacy_prompt.py` checks terminal validation and Ctrl+C.
+
+Tests use local mock Appium servers and do not require a device. Real-device
+behavior still depends on the installed Appium drivers and device capabilities.
+
+The Rust port is based on upstream commit
+`1dc887960982727d977d95f9943cc3f3b0d478ec`. The command names, response envelopes,
+recorder API, history limits, and selector strategies are preserved. The viewer
+is rebuilt with native browser APIs. XML inspection, selector testing and
+stability analysis run through `POST /_recorder/api/inspect`; the other recorder
+API paths remain the same.
+
+Selector score ties use deterministic Unicode ordering, which can differ from
+the original JavaScript runtime's locale ordering.
+
+An optional browser smoke test exercises the running Rust proxy with Chromium.
+With Playwright and Chromium already installed, run:
+
+```bash
+cargo build --locked
+PLAYWRIGHT_MODULE=/path/to/playwright node tests/viewer_smoke.cjs
+```
+
+Set `CHROMIUM_BINARY` or `RECORDER_BINARY` to override the browser or recorder
+binary paths used by this test.
 
 ## Recorded data
 
@@ -190,5 +211,5 @@ History retains at most 500 interactions and 100 MiB of captured data, evicting 
 flowchart LR
     Client["Appium client"] --> Recorder["Local recorder proxy"]
     Recorder --> Appium["Appium server"]
-    Recorder --> Viewer["Solid.js viewer"]
+    Recorder --> Viewer["Embedded browser viewer"]
 ```
