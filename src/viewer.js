@@ -9,6 +9,7 @@ let inspection;
 let displayedAction;
 let selectionRequest = new AbortController();
 let elementRequest = new AbortController();
+let stabilityRequest = new AbortController();
 let queryRequest = new AbortController();
 let activeTab = 'inspect';
 let diffRows = [];
@@ -92,15 +93,19 @@ function selectAction(id, follow = false) {
   render();
 }
 
-function render() {
+function render(historyChanged = false) {
   if (!actions.some(action => action.id === selectedId)) selectedId = actions.at(-1)?.id;
   renderNavigation();
   renderJourney();
   const action = actions[currentIndex()];
-  if (action === displayedAction) return;
+  if (action === displayedAction) {
+    if (historyChanged && selectedElement) refreshStability();
+    return;
+  }
   displayedAction = action;
   selectionRequest.abort();
   elementRequest.abort();
+  stabilityRequest.abort();
   queryRequest.abort();
   selectionRequest = new AbortController();
   selectedElement = undefined;
@@ -189,6 +194,7 @@ async function futureSnapshots(signal) {
 
 async function selectElement(element) {
   elementRequest.abort();
+  stabilityRequest.abort();
   elementRequest = new AbortController();
   const signal = AbortSignal.any([elementRequest.signal, selectionRequest.signal]);
   selectedElement = element;
@@ -203,15 +209,36 @@ async function selectElement(element) {
     const result = await inspect({ source, elementRef: element.elementRef }, signal);
     if (signal.aborted) return;
     renderSelectors(result.selectors || []);
-    const snapshots = await futureSnapshots(signal);
-    if (signal.aborted) return;
-    $('stability-status').textContent = snapshots.sources.length ? `Analyzed ${snapshots.sources.length}/${snapshots.eligible} future screens; stable means exactly one match at every consecutive step.` : 'No eligible future screens available.';
-    if (snapshots.sources.length) {
-      const report = await inspect({ source, elementRef: element.elementRef, snapshots: snapshots.sources }, signal);
-      if (!signal.aborted) renderStability(report.stability);
-    }
+    await refreshStability();
   } catch (error) {
     if (!signal.aborted) notice(`Element inspection failed: ${error.message}`);
+  }
+}
+
+async function refreshStability() {
+  stabilityRequest.abort();
+  stabilityRequest = new AbortController();
+  const signal = AbortSignal.any([stabilityRequest.signal, elementRequest.signal, selectionRequest.signal]);
+  const source = displayedAction.source;
+  const elementRef = selectedElement.elementRef;
+  $('stability-status').textContent = 'Checking future screens…';
+  try {
+    const snapshots = await futureSnapshots(signal);
+    if (signal.aborted) return;
+    if (!snapshots.sources.length) {
+      $('stability').replaceChildren();
+      $('stability-status').textContent = 'No eligible future screens available.';
+      return;
+    }
+    const report = await inspect({ source, elementRef, snapshots: snapshots.sources }, signal);
+    if (signal.aborted) return;
+    renderStability(report.stability);
+    $('stability-status').textContent = `Analyzed ${snapshots.sources.length}/${snapshots.eligible} future screens; stable means exactly one match at every consecutive step.`;
+  } catch (error) {
+    if (!signal.aborted) {
+      $('stability').replaceChildren();
+      $('stability-status').textContent = `Stability check failed: ${error.message}`;
+    }
   }
 }
 
@@ -248,6 +275,16 @@ function renderStability(report) {
   $('stability').replaceChildren(fragment);
 }
 
+function xpathLiteral(value) {
+  if (!value.includes('"')) return `"${value}"`;
+  const parts = [];
+  for (const [index, part] of value.split('"').entries()) {
+    if (index) parts.push(`'"'`);
+    if (part) parts.push(`"${part}"`);
+  }
+  return `concat(${parts.join(',')})`;
+}
+
 function xpathMatches(source, expression) {
   const html = htmlSource(source);
   const doc = new DOMParser().parseFromString(source, html ? 'text/html' : 'text/xml');
@@ -268,7 +305,7 @@ function xpathMatches(source, expression) {
       }
       const name = html
         ? current.namespaceURI === 'http://www.w3.org/1999/xhtml' && /^[A-Za-z_][\w.-]*$/.test(current.localName)
-          ? current.localName : `*[local-name(.)="${current.localName}"]`
+          ? current.localName : `*[local-name(.)=${xpathLiteral(current.localName)}]`
         : current.tagName;
       segments.unshift(`${name}[${index}]`);
       current = current.parentElement;
@@ -432,7 +469,7 @@ $('clear').addEventListener('click', async () => {
   try {
     await jsonRequest('/_recorder/api/history', { method: 'DELETE' });
     actions = [];
-    render();
+    render(true);
     notice('History cleared.');
   } catch (error) { notice(`Could not clear history: ${error.message}`); }
 });
@@ -462,13 +499,14 @@ stream.onmessage = event => {
     } else throw new Error('Invalid recorder event');
     actions = actions.slice(-500);
     if ($('follow').checked) selectedId = actions.at(-1)?.id;
-    render();
+    render(true);
   } catch (error) { notice(`Recorder stream error: ${error.message}`); }
 };
 window.addEventListener('pagehide', () => {
   stream.close();
   selectionRequest.abort();
   elementRequest.abort();
+  stabilityRequest.abort();
   queryRequest.abort();
 });
 render();

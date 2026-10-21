@@ -188,8 +188,8 @@ API paths remain the same.
 Selector score ties use deterministic Unicode ordering, which can differ from
 the original JavaScript runtime's locale ordering.
 
-An optional browser smoke test exercises the running Rust proxy with Chromium.
-With Playwright and Chromium already installed, run:
+The browser smoke test exercises the running Rust proxy with Chromium and runs
+in CI. With Playwright and its Chromium browser already installed, run:
 
 ```bash
 cargo build --locked
@@ -197,7 +197,8 @@ PLAYWRIGHT_MODULE=/path/to/playwright node tests/viewer_smoke.cjs
 ```
 
 Set `CHROMIUM_BINARY` or `RECORDER_BINARY` to override the browser or recorder
-binary paths used by this test.
+binary paths used by this test. Without `CHROMIUM_BINARY`, the test uses
+Playwright's bundled Chromium.
 
 ## Recorded data
 

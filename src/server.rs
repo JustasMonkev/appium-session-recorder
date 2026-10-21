@@ -675,8 +675,13 @@ async fn inspect(request: Request) -> Response {
     }
     let query = input
         .get("query")
-        .filter(|q| q["strategy"].is_string() && q["value"].is_string());
-    if let Some(query) = query {
+        .filter(|q| q["strategy"].is_string() && q["value"].is_string())
+        .cloned()
+        .map(|mut query| {
+            query["platform"] = output["platform"].clone();
+            query
+        });
+    if let Some(query) = &query {
         output["matches"] = json!(
             elements
                 .iter()
@@ -721,7 +726,7 @@ async fn inspect(request: Request) -> Response {
         let candidates = output["selectors"]
             .as_array()
             .cloned()
-            .unwrap_or_else(|| query.map(|q| vec![q.clone()]).unwrap_or_default());
+            .unwrap_or_else(|| query.map(|q| vec![q]).unwrap_or_default());
         output["stability"] = crate::core::evaluate_stability(&candidates, &parsed);
     }
     let mut response = response(StatusCode::OK, output);
@@ -1397,6 +1402,51 @@ mod tests {
                 .iter()
                 .any(|r| r["stableSteps"] == 1 && r["firstFailureStep"] == 2)
         );
+    }
+
+    #[tokio::test]
+    async fn inspector_infers_mobile_query_platform_from_source() {
+        let ios = r#"<App><XCUIElementTypeButton name="login" label="Visible"/></App>"#;
+        let android = r#"<hierarchy><node class="android.widget.Button" content-desc="login" text="Visible"/></hierarchy>"#;
+        for (source, platform, strategy, value, count) in [
+            (ios, "ios", "id", "login", 1),
+            (ios, "ios", "id", "Visible", 0),
+            (android, "android", "accessibility id", "login", 1),
+            (android, "android", "accessibility id", "Visible", 0),
+        ] {
+            for claimed_platform in [None, Some("unknown"), Some("ios"), Some("android")] {
+                let mut query = json!({"strategy":strategy,"value":value});
+                if let Some(claimed) = claimed_platform {
+                    query["platform"] = json!(claimed);
+                }
+                let request = axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/_recorder/api/inspect")
+                    .header("host", "localhost")
+                    .body(Body::from(
+                        json!({"source":source,"query":query,"snapshots":[source]}).to_string(),
+                    ))
+                    .unwrap();
+                let response = router("http://127.0.0.1:4723")
+                    .unwrap()
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                let result: Value = serde_json::from_slice(
+                    &to_bytes(response.into_body(), MAX_REQUEST).await.unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    result["matches"].as_array().unwrap().len(),
+                    count,
+                    "{strategy} {value} {claimed_platform:?}"
+                );
+                let stability = &result["stability"]["results"][0];
+                assert_eq!(stability["candidate"]["platform"], platform);
+                assert_eq!(stability["stableSteps"], count);
+            }
+        }
     }
 
     #[tokio::test]

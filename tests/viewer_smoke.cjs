@@ -9,11 +9,22 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const project = path.resolve(__dirname, '..');
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM1sAAAAASUVORK5CYII=';
 let step = 0;
-const source = () => `<AppiumAUT><XCUIElementTypeButton type="XCUIElementTypeButton" name="continue" label="${step === 1 ? 'Continue' : 'Next'}" value="&lt;img src=x onerror=window.viewerInjected=1&gt;" enabled="true" visible="true" accessible="true"/></AppiumAUT>`;
+let sourceOverride;
+let captureGate;
+const source = () => sourceOverride ?? `<AppiumAUT><XCUIElementTypeButton type="XCUIElementTypeButton" name="continue" label="${step === 1 ? 'Continue' : 'Next'}" value="&lt;img src=x onerror=window.viewerInjected=1&gt;" enabled="true" visible="true" accessible="true"/></AppiumAUT>`;
 const upstream = http.createServer((request, response) => {
   let value = null;
   if (request.url === '/session/demo/back') step++;
-  else if (request.url === '/session/demo/source') value = source();
+  else if (request.url === '/session/demo/source') {
+    value = source();
+    if (captureGate) {
+      captureGate(() => {
+        response.setHeader('Content-Type', 'application/json');
+        response.end(JSON.stringify({ value }));
+      });
+      return;
+    }
+  }
   else if (request.url === '/session/demo/screenshot') value = png;
   else { response.writeHead(404); response.end(); return; }
   response.setHeader('Content-Type', 'application/json');
@@ -66,7 +77,7 @@ async function main() {
   let browser;
   try {
     await ready;
-    browser = await chromium.launch({ executablePath: process.env.CHROMIUM_BINARY || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+    browser = await chromium.launch({ executablePath: process.env.CHROMIUM_BINARY, headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -77,6 +88,21 @@ async function main() {
       const response = await fetch(`${base}/session/demo/back`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       assert.equal(response.status, 200);
       await response.json();
+    };
+    const clear = async () => {
+      await page.locator('#clear').click();
+      await page.waitForFunction(() => document.getElementById('position').textContent.includes('No actions'));
+    };
+    const recordSource = async xml => {
+      sourceOverride = xml;
+      await back();
+      await page.waitForFunction(expected => document.getElementById('source').textContent === expected, xml);
+    };
+    const query = async (strategy, value, matches) => {
+      await page.locator('#strategy').selectOption(strategy);
+      await page.locator('#query-value').fill(value);
+      await page.locator('#query button').click();
+      await page.waitForFunction(expected => document.getElementById('query-result').textContent === `Found ${expected} element(s) in the captured source.`, matches);
     };
     await back();
     await page.waitForFunction(() => document.getElementById('source').textContent.includes('Continue'));
@@ -111,11 +137,48 @@ async function main() {
     assert.match(await page.locator('#position').textContent(), /Action 1 of 2/);
     await page.locator('#follow').check();
     await page.waitForFunction(() => document.getElementById('position').textContent.includes('Action 2'));
-    await page.locator('#clear').click();
-    await page.waitForFunction(() => document.getElementById('position').textContent.includes('No actions'));
+    await clear();
     assert.equal(await page.locator('#screenshot').isVisible(), false);
+
+    await page.locator('#tab-inspect').click();
+    const iosSource = name => `<AppiumAUT><XCUIElementTypeButton type="XCUIElementTypeButton" name="${name}" label="Original label" enabled="true" visible="true" accessible="true"/></AppiumAUT>`;
+    await recordSource(iosSource('stable-target'));
+    await page.locator('#follow').uncheck();
+    await query('id', 'stable-target', 1);
+    await page.waitForFunction(() => document.getElementById('stability-status').textContent === 'No eligible future screens available.');
+    const selectedAttributes = await page.locator('#attributes').textContent();
+    const sourceStarted = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Future capture did not request page source')), 10000);
+      captureGate = release => { clearTimeout(timer); resolve(release); };
+    });
+    await back();
+    const releaseSource = await sourceStarted;
+    await page.waitForFunction(() => document.getElementById('position').textContent.includes('Action 1 of 2'));
+    captureGate = undefined;
+    releaseSource();
+    await page.waitForFunction(() => document.getElementById('stability').textContent.includes('1/1 stable'));
+    sourceOverride = iosSource('different-target');
+    await back();
+    await page.waitForFunction(() => document.getElementById('stability-status').textContent.includes('Analyzed 2/2 future screens'));
+    await page.waitForFunction(() => [...document.querySelectorAll('#stability .stability-row')].some(row => row.querySelector('code').textContent === 'stable-target' && row.textContent.includes('1/2 stable')));
+    assert.match(await page.locator('#position').textContent(), /Action 1 of 3/);
+    assert.equal(await page.locator('#follow').isChecked(), false);
+    assert.equal(await page.locator('#attributes').textContent(), selectedAttributes);
+    assert.equal(await page.locator('#query-value').inputValue(), 'stable-target');
+
+    await clear();
+    await recordSource('<hierarchy><node class="android.widget.Button" text="Visible text" content-desc="actual-description" resource-id="app:id/button" enabled="true" clickable="true" bounds="[0,0][100,50]"/></hierarchy>');
+    await query('accessibility id', 'Visible text', 0);
+    await query('accessibility id', 'actual-description', 1);
+    await clear();
+    await recordSource('<html><body><x"y id=quoted>Quote</x"y><x"y\'z id=both>Both quotes</x"y\'z></body></html>');
+    await query('xpath', '//*[@id="quoted"]', 1);
+    await page.waitForFunction(() => JSON.parse(document.getElementById('attributes').textContent).attributes.id === 'quoted');
+    await query('xpath', '//*[@id="both"]', 1);
+    await page.waitForFunction(() => JSON.parse(document.getElementById('attributes').textContent).attributes.id === 'both');
+    await clear();
     assert.deepEqual(errors, []);
-    console.log('PASS viewer: live Rust proxy, captures, SSE, navigation, XPath/mobile queries, ranked selectors, stability, diff, journey, clear, CSP');
+    console.log('PASS viewer: live Rust proxy, captures, SSE, navigation, platform queries, quoted HTML XPath, live stability, diff, journey, clear, CSP');
   } finally {
     if (browser) await browser.close();
     const exited = new Promise(resolve => recorder.once('exit', resolve));
