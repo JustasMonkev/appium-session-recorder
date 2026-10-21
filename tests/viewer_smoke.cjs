@@ -97,6 +97,7 @@ async function main() {
       sourceOverride = xml;
       await back();
       await page.waitForFunction(expected => document.getElementById('source').textContent === expected, xml);
+      await page.locator('#elements button').first().waitFor();
     };
     const query = async (strategy, value, matches) => {
       await page.locator('#strategy').selectOption(strategy);
