@@ -1,0 +1,27 @@
+name: Rust
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked && python3 tests/legacy_prompt.py
+      - run: cargo build --release --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium for browser tests
+        run: |
+          npm install --prefix "$RUNNER_TEMP/recorder-browser" --no-package-lock --no-audit --no-fund playwright@1.57.0
+          node "$RUNNER_TEMP/recorder-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Test embedded viewer
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/recorder-browser/node_modules/playwright
+          RECORDER_BINARY: ${{ github.workspace }}/target/release/appium-recorder
+        run: node tests/viewer_smoke.cjs

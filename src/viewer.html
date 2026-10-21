@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Appium Session Recorder</title>
+  <link rel="stylesheet" href="/_recorder/viewer.css">
+  <script src="/_recorder/viewer.js" defer></script>
+</head>
+<body>
+  <header><div><h1>Appium Session Recorder</h1><p>Inspect your session, one action at a time.</p></div><div class="toolbar"><span id="connection" role="status">Connecting…</span><button id="clear">Clear history</button></div></header>
+  <main>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <nav class="carousel" aria-label="Recorded actions"><button id="previous">← Previous</button><div><strong id="position">No actions recorded</strong><div id="action-meta"></div><code id="action-selector"></code></div><label><input id="follow" type="checkbox" checked> Follow latest</label><button id="next">Next →</button></nav>
+    <div class="tabs" role="tablist" aria-label="Session views"><button role="tab" id="tab-inspect" aria-selected="true" aria-controls="inspect">Inspect</button><button role="tab" id="tab-diff" aria-selected="false" aria-controls="diff">Diff</button><button role="tab" id="tab-journey" aria-selected="false" aria-controls="journey">Journey</button></div>
+    <section id="inspect" role="tabpanel" aria-labelledby="tab-inspect">
+      <form id="query"><h2>Query tester</h2><div class="query-row"><label>Strategy<select id="strategy"><option>accessibility id</option><option>id</option><option>xpath</option><option>class name</option><option>-ios predicate string</option><option>-ios class chain</option><option>-android uiautomator</option></select></label><label class="grow">Selector<input id="query-value" placeholder="Enter a locator value" autocomplete="off"></label><button type="submit">Find</button></div><p id="query-result" role="status"></p></form>
+      <div class="inspector-grid"><section class="card screen"><h2>Screenshot</h2><img id="screenshot" alt="Selected action screenshot" hidden><p id="capture-status">Waiting for an Appium action.</p></section><section class="card"><div class="section-bar"><h2>Page source</h2><button id="copy-source">Copy source</button></div><pre id="source" tabindex="0"></pre></section></div>
+      <section class="card"><div class="section-bar"><h2>Elements</h2><label><input id="actionable" type="checkbox"> Actionable only</label><label>Filter<input id="element-filter" type="search" placeholder="Type, label, resource ID…"></label></div><p id="elements-status"></p><div id="elements" class="element-list"></div></section>
+      <section id="element-details" class="card" hidden><h2>Selected element</h2><pre id="attributes"></pre><h3>Ranked selectors</h3><p class="muted">Test a selector against the captured source or copy it for your automation.</p><div id="selectors"></div><h3>Selector stability</h3><p id="stability-status"></p><div id="stability"></div></section>
+    </section>
+    <section id="diff" role="tabpanel" aria-labelledby="tab-diff" hidden><div class="section-bar"><h2>Previous → current</h2><label><input id="changes-only" type="checkbox" checked> Changes only</label></div><p id="diff-summary"></p><div class="inspector-grid comparison"><section class="card"><h3>Previous screenshot</h3><img id="previous-screenshot" alt="Previous action screenshot" hidden></section><section class="card"><h3>Current screenshot</h3><img id="current-screenshot" alt="Current action screenshot" hidden></section></div><div class="diff-scroll"><table><thead><tr><th scope="col">Line</th><th scope="col">Previous source</th><th scope="col">Line</th><th scope="col">Current source</th></tr></thead><tbody id="diff-rows"></tbody></table></div></section>
+    <section id="journey" role="tabpanel" aria-labelledby="tab-journey" hidden><h2>Journey</h2><p id="journey-summary"></p><div id="journey-list"></div></section>
+  </main>
+  <footer>Local Appium recorder · Rust</footer>
+</body>
+</html>
