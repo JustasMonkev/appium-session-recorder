@@ -13,6 +13,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "support/live_appium.rs"]
+mod live_appium;
+
 const ANDROID: &str = r#"<hierarchy><node class="android.widget.Button" text="Continue" content-desc="continue" resource-id="com.example:id/continue" enabled="true" clickable="true" bounds="[0,0][100,50]"/><node class="android.widget.TextView" text="Disabled" enabled="false" bounds="[0,60][100,100]"/></hierarchy>"#;
 const IOS: &str = r#"<AppiumAUT type="XCUIElementTypeApplication"><XCUIElementTypeWindow type="XCUIElementTypeWindow"><XCUIElementTypeButton type="XCUIElementTypeButton" name="loginBtn" label="Log In" enabled="true" visible="true" accessible="true"/></XCUIElementTypeWindow></AppiumAUT>"#;
 
@@ -143,6 +146,10 @@ fn read_request(stream: &mut TcpStream) -> Request {
 }
 
 fn run(args: &[&str]) -> Output {
+    run_with_timeout(args, Duration::from_secs(10))
+}
+
+fn run_with_timeout(args: &[&str], timeout: Duration) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_appium-recorder"))
         .args(args)
         .env_remove("APPIUM_URL")
@@ -153,7 +160,7 @@ fn run(args: &[&str]) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + timeout;
     while child.try_wait().unwrap().is_none() {
         if Instant::now() >= deadline {
             child.kill().unwrap();
