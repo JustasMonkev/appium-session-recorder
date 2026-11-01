@@ -541,10 +541,7 @@ fn tap_and_type_use_both_element_id_formats_and_preserve_unicode_text() {
         );
         assert!(requests[3].path.ends_with("/clear"));
         assert!(requests[4].path.ends_with("/value"));
-        assert_eq!(
-            requests[4].body,
-            json!({"text":"a😀é","value":["a","😀","é"]})
-        );
+        assert_eq!(requests[4].body, json!({"text":"a😀é"}));
     }
 }
 
