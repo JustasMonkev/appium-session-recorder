@@ -384,14 +384,10 @@ impl AppiumClient {
         element_id: &str,
         text: &str,
     ) -> Result<(), AppiumError> {
-        let characters: Vec<String> = text.chars().map(|c| c.to_string()).collect();
-        self.element_command(
-            session_id,
-            element_id,
-            "value",
-            json!({"text":text,"value":characters}),
-        )
-        .await
+        // W3C Element Send Keys takes only `text`. Appium 4 drops the legacy
+        // JSONWP `value` array (logging each ignored field); Appium 2/3 accept `text` too.
+        self.element_command(session_id, element_id, "value", json!({"text":text}))
+            .await
     }
     pub async fn type_text(
         &self,

@@ -25,3 +25,32 @@ jobs:
           PLAYWRIGHT_MODULE: ${{ runner.temp }}/recorder-browser/node_modules/playwright
           RECORDER_BINARY: ${{ github.workspace }}/target/release/appium-recorder
         run: node tests/viewer_smoke.cjs
+  appium-e2e:
+    name: Appium ${{ matrix.appium }} end-to-end
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - appium: '3'
+            fake-driver: '6'
+          - appium: beta
+            fake-driver: beta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: cargo build --locked
+      - name: Install Appium and the fake driver
+        env:
+          APPIUM_HOME: ${{ runner.temp }}/appium-home
+        run: |
+          npm install --prefix "$RUNNER_TEMP/appium" --no-package-lock --no-audit --no-fund "appium@${{ matrix.appium }}"
+          node "$RUNNER_TEMP/appium/node_modules/appium/index.js" driver install --source=npm "@appium/fake-driver@${{ matrix.fake-driver }}"
+      - name: Test recorder against Appium
+        env:
+          APPIUM_HOME: ${{ runner.temp }}/appium-home
+          APPIUM_MODULE: ${{ runner.temp }}/appium/node_modules/appium
+        run: node tests/appium_e2e.cjs

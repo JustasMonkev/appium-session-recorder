@@ -16,6 +16,28 @@ A local Appium proxy and JSON-first automation CLI. It records actions, screensh
 - Rust 1.85 or newer to build (verified with Rust 1.85.1 and 1.99.1)
 - A running [Appium](https://appium.io/) server for device commands
 
+## Appium compatibility
+
+CI runs `tests/appium_e2e.cjs` against a real Appium server with
+`@appium/fake-driver`, on Appium 3 and on the Appium 4 beta (verified with
+`4.0.0-beta.7`). The test covers every command-mode command, proxy recording with
+screenshot and source capture, selector mapping, and WebDriver BiDi WebSocket
+tunnelling.
+
+The recorder sends only W3C WebDriver payloads, so Appium 4's removal of the
+legacy JSONWP protocol does not affect it. Appium 4's other protocol changes,
+such as stricter capability and timeout validation, reach the client unchanged.
+
+Appium 4 rejects state-changing requests that carry an `Origin` header
+(`403 Browser-origin requests are not allowed`) unless CORS is enabled. The
+recorder forwards a client's loopback `Origin` header, so browser-based clients
+recorded against Appium 4 need it to start with `--allow-insecure=*:cors` (or
+`--relaxed-security`). The Appium 3 `--allow-cors` flag no longer exists.
+
+Appium advertises a session's BiDi `webSocketUrl` on its own host and port.
+Clients that use that URL connect to Appium directly; BiDi traffic is not
+recorded either way.
+
 ## Install
 
 ```bash
@@ -175,8 +197,15 @@ cargo build --release --locked
 
 On Unix, `python3 tests/legacy_prompt.py` checks terminal validation and Ctrl+C.
 
-Tests use local mock Appium servers and do not require a device. Real-device
-behavior still depends on the installed Appium drivers and device capabilities.
+Unit and integration tests use local mock Appium servers and do not require a device.
+With Appium and `@appium/fake-driver` installed, run the real-server check:
+
+```bash
+cargo build --locked
+APPIUM_HOME=/path/to/appium-home APPIUM_MODULE=/path/to/node_modules/appium node tests/appium_e2e.cjs
+```
+
+Real-device behavior still depends on the installed Appium drivers and device capabilities.
 
 The Rust port is based on upstream commit
 `1dc887960982727d977d95f9943cc3f3b0d478ec`. The command names, response envelopes,
